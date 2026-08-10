@@ -28,5 +28,6 @@
     <Compile Remove="tests\**\*.cs" />
     <Page Remove="tests\**\*.xaml" />
     <Resource Include="Assets\AppIcon.ico" />
+    <Resource Include="Assets\GameModeIcon.png" />
   </ItemGroup>
 </Project>

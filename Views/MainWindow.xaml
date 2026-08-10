@@ -31,7 +31,32 @@
         </StackPanel>
         <Border Grid.Column="1" Background="#243047" CornerRadius="12" Padding="18,10">
           <StackPanel Orientation="Horizontal">
-            <TextBlock Text="{Binding CurrentModeIcon}" FontFamily="Segoe UI Emoji" FontSize="26" VerticalAlignment="Center"/>
+            <Grid Width="58" Height="30" VerticalAlignment="Center">
+              <Image Source="/Assets/GameModeIcon.png" Stretch="Uniform">
+                <Image.Style>
+                  <Style TargetType="Image">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
+                        <Setter Property="Visibility" Value="Visible"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Image.Style>
+              </Image>
+              <TextBlock Text="{Binding CurrentModeIcon}" FontFamily="Segoe UI Emoji"
+                         FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </Grid>
             <StackPanel Margin="12,0,0,0">
               <TextBlock Text="現在のモード" Foreground="#94A3B8" FontSize="12"/>
               <TextBlock Text="{Binding CurrentModeName}" Foreground="White" FontSize="19" FontWeight="SemiBold"/>
@@ -58,7 +83,32 @@
                   <RowDefinition Height="*"/>
                   <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="{Binding Icon}" FontFamily="Segoe UI Emoji" FontSize="44" HorizontalAlignment="Center"/>
+                <Grid Width="96" Height="48" HorizontalAlignment="Center">
+                  <Image Source="/Assets/GameModeIcon.png" Stretch="Uniform">
+                    <Image.Style>
+                      <Style TargetType="Image">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Mode.Id}" Value="game">
+                            <Setter Property="Visibility" Value="Visible"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Image.Style>
+                  </Image>
+                  <TextBlock Text="{Binding Icon}" FontFamily="Segoe UI Emoji" FontSize="44"
+                             HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Mode.Id}" Value="game">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </Grid>
                 <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="25" FontWeight="Bold"
                            HorizontalAlignment="Center" Margin="0,8,0,22"/>
                 <StackPanel Grid.Row="2">
