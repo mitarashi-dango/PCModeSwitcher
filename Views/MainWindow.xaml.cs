@@ -25,6 +25,9 @@ public partial class MainWindow : Window
         }
 
         Activate();
+        Topmost = true;
+        Topmost = false;
+        Focus();
     }
 
     public void AllowClose()

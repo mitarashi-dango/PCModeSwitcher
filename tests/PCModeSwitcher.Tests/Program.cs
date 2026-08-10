@@ -5,6 +5,7 @@ var tests = new List<(string Name, Func<Task> Run)>
 {
     ("既定の3モード", TestDefaultModesAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
+    ("多重起動の検出と既存画面への通知", TestSingleInstanceCoordinatorAsync),
     ("利用可能な電源プランの読み取り", TestPowerPlanEnumerationAsync),
     ("モードの3設定一括適用", TestModeApplyAsync),
     ("途中失敗時の復元と結果表示", TestPartialFailureRollbackAsync)
@@ -78,6 +79,52 @@ static async Task TestSettingsRoundTripAsync()
         if (Directory.Exists(testDirectory))
             Directory.Delete(testDirectory, true);
     }
+}
+
+static Task TestSingleInstanceCoordinatorAsync()
+{
+    var applicationId = $"PCModeSwitcher.Tests.{Guid.NewGuid():N}";
+    using var activationRequested = new ManualResetEventSlim();
+
+    using (var primary = new SingleInstanceCoordinator(applicationId))
+    {
+        primary.ActivationRequested += (_, _) => activationRequested.Set();
+        Assert(primary.TryAcquire(), "最初のインスタンスを取得できませんでした。");
+
+        bool? secondaryAcquired = null;
+        Exception? secondaryException = null;
+        var secondaryThread = new Thread(() =>
+        {
+            try
+            {
+                using var secondary = new SingleInstanceCoordinator(applicationId);
+                secondaryAcquired = secondary.TryAcquire();
+            }
+            catch (Exception ex)
+            {
+                secondaryException = ex;
+            }
+        })
+        {
+            IsBackground = true
+        };
+        secondaryThread.Start();
+
+        Assert(secondaryThread.Join(TimeSpan.FromSeconds(3)),
+            "2個目のインスタンスの検出が完了しませんでした。");
+        if (secondaryException is not null)
+        {
+            throw new InvalidOperationException("2個目のインスタンスの検出中に失敗しました。", secondaryException);
+        }
+
+        Assert(secondaryAcquired == false, "2個目のインスタンスが起動可能になっています。");
+        Assert(activationRequested.Wait(TimeSpan.FromSeconds(3)),
+            "既存インスタンスへ表示要求が通知されませんでした。");
+    }
+
+    using var replacement = new SingleInstanceCoordinator(applicationId);
+    Assert(replacement.TryAcquire(), "終了後に新しいインスタンスを取得できませんでした。");
+    return Task.CompletedTask;
 }
 
 static async Task TestPowerPlanEnumerationAsync()

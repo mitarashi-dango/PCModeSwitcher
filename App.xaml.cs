@@ -9,14 +9,25 @@ namespace PCModeSwitcher;
 
 public partial class App : Wpf.Application
 {
+    private const string SingleInstanceId = "PCModeSwitcher.8F75438A-DB7F-48CD-A753-AD477D251D8F";
+
     private Forms.NotifyIcon? _trayIcon;
     private System.Drawing.Icon? _applicationIcon;
     private MainWindow? _mainWindow;
+    private SingleInstanceCoordinator? _singleInstanceCoordinator;
     private bool _trayHintShown;
 
     protected override async void OnStartup(Wpf.StartupEventArgs e)
     {
         base.OnStartup(e);
+        _singleInstanceCoordinator = new SingleInstanceCoordinator(SingleInstanceId);
+        _singleInstanceCoordinator.ActivationRequested += OnActivationRequested;
+        if (!_singleInstanceCoordinator.TryAcquire())
+        {
+            Shutdown();
+            return;
+        }
+
         ShutdownMode = Wpf.ShutdownMode.OnMainWindowClose;
 
         DispatcherUnhandledException += (_, args) =>
@@ -62,6 +73,13 @@ public partial class App : Wpf.Application
         _applicationIcon?.Dispose();
         _applicationIcon = null;
 
+        if (_singleInstanceCoordinator is not null)
+        {
+            _singleInstanceCoordinator.ActivationRequested -= OnActivationRequested;
+            _singleInstanceCoordinator.Dispose();
+            _singleInstanceCoordinator = null;
+        }
+
         base.OnExit(e);
     }
 
@@ -101,6 +119,11 @@ public partial class App : Wpf.Application
     private void RestoreMainWindow()
     {
         _mainWindow?.RestoreFromTray();
+    }
+
+    private void OnActivationRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(RestoreMainWindow);
     }
 
     private void UpdateTrayIconVisibility(CloseButtonBehavior behavior)
