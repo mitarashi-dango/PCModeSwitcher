@@ -8,6 +8,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("既定の3モード", TestDefaultModesAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
+    ("スタートアップ起動引数の判定", TestStartupLaunchArgumentAsync),
     ("ショートカットの入力検証", TestHotkeyValidationAsync),
     ("アプリ設定の連携と失敗時復元", TestAppPreferenceIntegrationAsync),
     ("多重起動の検出と既存画面への通知", TestSingleInstanceCoordinatorAsync),
@@ -156,6 +157,19 @@ static Task TestHotkeyValidationAsync()
     return Task.CompletedTask;
 }
 
+static Task TestStartupLaunchArgumentAsync()
+{
+    Assert(PCModeSwitcher.App.IsStartupLaunch(["--startup"]),
+        "スタートアップ起動引数を認識できませんでした。");
+    Assert(PCModeSwitcher.App.IsStartupLaunch(["--STARTUP"]),
+        "スタートアップ起動引数の大文字小文字を区別しています。");
+    Assert(!PCModeSwitcher.App.IsStartupLaunch([]),
+        "通常起動がスタートアップ起動として扱われました。");
+    Assert(!PCModeSwitcher.App.IsStartupLaunch(["--unknown"]),
+        "未対応の起動引数がスタートアップ起動として扱われました。");
+    return Task.CompletedTask;
+}
+
 static async Task TestAppPreferenceIntegrationAsync()
 {
     var testDirectory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.Tests.{Guid.NewGuid():N}");
@@ -170,6 +184,11 @@ static async Task TestAppPreferenceIntegrationAsync()
             startup,
             hotkeyService);
         await viewModel.InitializeAsync();
+
+        var applyResult = await viewModel.ApplyModeByIdAsync("work");
+        Assert(applyResult?.IsSuccess == true, "通知領域用のモード適用に失敗しました。");
+        Assert(viewModel.CurrentModeId == "work" && viewModel.CurrentModeName == "WORK",
+            "通知領域用のモード適用後に現在のモードが更新されていません。");
 
         var hotkeys = SettingsService.CreateDefaultHotkeys();
         hotkeys[0].Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt;

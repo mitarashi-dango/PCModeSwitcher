@@ -14,6 +14,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IGlobalHotkeyService _globalHotkeyService;
     private AppSettings _settings = SettingsService.CreateDefaults();
     private bool _isBusy;
+    private string? _currentModeId;
     private string _currentModeName = "未選択";
     private string _currentModeIcon = "—";
     private string _statusMessage = "モードを選ぶと、3つの設定をまとめて切り替えます。";
@@ -33,6 +34,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
     public bool IsInteractionEnabled => !IsBusy;
+    public string? CurrentModeId { get => _currentModeId; private set => SetProperty(ref _currentModeId, value); }
     public string CurrentModeName { get => _currentModeName; private set => SetProperty(ref _currentModeName, value); }
     public string CurrentModeIcon { get => _currentModeIcon; private set => SetProperty(ref _currentModeIcon, value); }
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
@@ -180,17 +182,27 @@ public sealed class MainViewModel : ObservableObject
         return OperationResult.Success(StatusMessage);
     }
 
-    public Task ApplyModeByIdAsync(string modeId)
+    public Task<ModeApplyResult?> ApplyModeByIdAsync(string modeId)
     {
         var card = Modes.FirstOrDefault(mode =>
             string.Equals(mode.Mode.Id, modeId, StringComparison.OrdinalIgnoreCase));
-        return card is null ? Task.CompletedTask : ApplyModeAsync(card);
+        return card is null
+            ? Task.FromResult<ModeApplyResult?>(null)
+            : ApplyModeCardAsync(card);
     }
 
     private async Task ApplyModeAsync(object? parameter)
     {
-        if (parameter is not ModeCardViewModel card || IsBusy)
-            return;
+        if (parameter is ModeCardViewModel card)
+        {
+            await ApplyModeCardAsync(card);
+        }
+    }
+
+    private async Task<ModeApplyResult?> ApplyModeCardAsync(ModeCardViewModel card)
+    {
+        if (IsBusy)
+            return null;
 
         IsBusy = true;
         StatusMessage = $"{card.Name}モードを適用しています…";
@@ -207,6 +219,8 @@ public sealed class MainViewModel : ObservableObject
                 if (!save.IsSuccess)
                     StatusMessage += $"{Environment.NewLine}{Environment.NewLine}※ {save.UserMessage}";
             }
+
+            return result;
         }
         finally
         {
@@ -257,6 +271,7 @@ public sealed class MainViewModel : ObservableObject
     private void SetCurrentMode(string? modeId)
     {
         var mode = _settings.Modes.FirstOrDefault(value => value.Id == modeId);
+        CurrentModeId = mode?.Id;
         CurrentModeName = mode?.Name ?? "未選択";
         CurrentModeIcon = mode?.Icon ?? "—";
     }

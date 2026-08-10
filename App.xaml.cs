@@ -4,6 +4,7 @@ using PCModeSwitcher.ViewModels;
 using PCModeSwitcher.Views;
 using Forms = System.Windows.Forms;
 using Wpf = System.Windows;
+using WpfInterop = System.Windows.Interop;
 
 namespace PCModeSwitcher;
 
@@ -12,16 +13,21 @@ public partial class App : Wpf.Application
     private const string SingleInstanceId = "PCModeSwitcher.8F75438A-DB7F-48CD-A753-AD477D251D8F";
 
     private Forms.NotifyIcon? _trayIcon;
+    private Forms.ContextMenuStrip? _trayMenu;
+    private readonly Dictionary<string, Forms.ToolStripMenuItem> _trayModeItems =
+        new(StringComparer.OrdinalIgnoreCase);
     private System.Drawing.Icon? _applicationIcon;
     private MainWindow? _mainWindow;
     private MainViewModel? _mainViewModel;
     private SingleInstanceCoordinator? _singleInstanceCoordinator;
     private GlobalHotkeyService? _globalHotkeyService;
     private bool _trayHintShown;
+    private bool _isWindowHiddenToTray;
 
     protected override async void OnStartup(Wpf.StartupEventArgs e)
     {
         base.OnStartup(e);
+        _isWindowHiddenToTray = IsStartupLaunch(e.Args);
         _singleInstanceCoordinator = new SingleInstanceCoordinator(SingleInstanceId);
         _singleInstanceCoordinator.ActivationRequested += OnActivationRequested;
         if (!_singleInstanceCoordinator.TryAcquire())
@@ -58,17 +64,22 @@ public partial class App : Wpf.Application
         _globalHotkeyService.Attach(window);
         _globalHotkeyService.HotkeyPressed += OnHotkeyPressed;
         CreateTrayIcon();
-        viewModel.PropertyChanged += (_, args) =>
-        {
-            if (args.PropertyName == nameof(MainViewModel.CloseButtonBehavior))
-            {
-                UpdateTrayIconVisibility(viewModel.CloseButtonBehavior);
-            }
-        };
+        viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
         window.HiddenToTray += OnWindowHiddenToTray;
         SessionEnding += (_, _) => window.AllowClose();
-        window.Show();
+        if (_isWindowHiddenToTray)
+        {
+            // グローバルショートカット登録にはHWNDが必要。EnsureHandleは画面を表示しない。
+            new WpfInterop.WindowInteropHelper(window).EnsureHandle();
+        }
+        else
+        {
+            window.Show();
+        }
+
         await viewModel.InitializeAsync();
+        CreateTrayModeItems();
+        UpdateTrayModeState();
         UpdateTrayIconVisibility(viewModel.CloseButtonBehavior);
     }
 
@@ -81,6 +92,10 @@ public partial class App : Wpf.Application
             _trayIcon = null;
         }
 
+        _trayMenu?.Dispose();
+        _trayMenu = null;
+        _trayModeItems.Clear();
+
         _applicationIcon?.Dispose();
         _applicationIcon = null;
 
@@ -89,6 +104,11 @@ public partial class App : Wpf.Application
             _globalHotkeyService.HotkeyPressed -= OnHotkeyPressed;
             _globalHotkeyService.Dispose();
             _globalHotkeyService = null;
+        }
+
+        if (_mainViewModel is not null)
+        {
+            _mainViewModel.PropertyChanged -= OnMainViewModelPropertyChanged;
         }
         _mainViewModel = null;
 
@@ -104,16 +124,23 @@ public partial class App : Wpf.Application
 
     private void CreateTrayIcon()
     {
-        var menu = new Forms.ContextMenuStrip();
+        _trayMenu = new Forms.ContextMenuStrip();
+        var loadingItem = new Forms.ToolStripMenuItem("モードを読み込んでいます…")
+        {
+            Enabled = false,
+            Tag = "loading"
+        };
         var showItem = new Forms.ToolStripMenuItem("表示");
         showItem.Click += (_, _) => Dispatcher.Invoke(RestoreMainWindow);
 
         var exitItem = new Forms.ToolStripMenuItem("終了");
         exitItem.Click += (_, _) => Dispatcher.Invoke(ExitApplication);
 
-        menu.Items.Add(showItem);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(exitItem);
+        _trayMenu.Items.Add(loadingItem);
+        _trayMenu.Items.Add(new Forms.ToolStripSeparator { Tag = "mode-separator" });
+        _trayMenu.Items.Add(showItem);
+        _trayMenu.Items.Add(new Forms.ToolStripSeparator());
+        _trayMenu.Items.Add(exitItem);
 
         _applicationIcon = Environment.ProcessPath is { } executablePath
             ? System.Drawing.Icon.ExtractAssociatedIcon(executablePath)
@@ -123,7 +150,7 @@ public partial class App : Wpf.Application
         {
             Icon = _applicationIcon ?? System.Drawing.SystemIcons.Application,
             Text = "PC Mode Switcher",
-            ContextMenuStrip = menu,
+            ContextMenuStrip = _trayMenu,
             Visible = true
         };
         _trayIcon.MouseDoubleClick += (_, args) =>
@@ -135,9 +162,46 @@ public partial class App : Wpf.Application
         };
     }
 
+    private void CreateTrayModeItems()
+    {
+        if (_trayMenu is null || _mainViewModel is null)
+        {
+            return;
+        }
+
+        var loadingItem = _trayMenu.Items
+            .OfType<Forms.ToolStripItem>()
+            .FirstOrDefault(item => Equals(item.Tag, "loading"));
+        if (loadingItem is not null)
+        {
+            _trayMenu.Items.Remove(loadingItem);
+            loadingItem.Dispose();
+        }
+
+        var insertIndex = 0;
+        foreach (var mode in _mainViewModel.Modes)
+        {
+            var modeId = mode.Mode.Id;
+            var modeItem = new Forms.ToolStripMenuItem($"{mode.Icon}  {mode.Name}")
+            {
+                CheckOnClick = false,
+                Tag = modeId
+            };
+            modeItem.Click += (_, _) => Dispatcher.BeginInvoke(
+                new Action(async () => await ApplyModeFromTrayAsync(modeId)));
+            _trayMenu.Items.Insert(insertIndex++, modeItem);
+            _trayModeItems[modeId] = modeItem;
+        }
+    }
+
     private void RestoreMainWindow()
     {
+        _isWindowHiddenToTray = false;
         _mainWindow?.RestoreFromTray();
+        if (_mainViewModel is not null)
+        {
+            UpdateTrayIconVisibility(_mainViewModel.CloseButtonBehavior);
+        }
     }
 
     private void OnActivationRequested(object? sender, EventArgs e)
@@ -147,20 +211,15 @@ public partial class App : Wpf.Application
 
     private void OnHotkeyPressed(object? sender, ModeHotkeyPressedEventArgs e)
     {
-        Dispatcher.BeginInvoke(new Action(async () =>
-        {
-            if (_mainViewModel is not null)
-            {
-                await _mainViewModel.ApplyModeByIdAsync(e.ModeId);
-            }
-        }));
+        Dispatcher.BeginInvoke(new Action(async () => await ApplyModeFromTrayAsync(e.ModeId)));
     }
 
     private void UpdateTrayIconVisibility(CloseButtonBehavior behavior)
     {
         if (_trayIcon is not null)
         {
-            _trayIcon.Visible = behavior == CloseButtonBehavior.MinimizeToTray;
+            _trayIcon.Visible = _isWindowHiddenToTray ||
+                behavior == CloseButtonBehavior.MinimizeToTray;
         }
     }
 
@@ -172,6 +231,12 @@ public partial class App : Wpf.Application
 
     private void OnWindowHiddenToTray(object? sender, EventArgs e)
     {
+        _isWindowHiddenToTray = true;
+        if (_mainViewModel is not null)
+        {
+            UpdateTrayIconVisibility(_mainViewModel.CloseButtonBehavior);
+        }
+
         var showNotification = _mainWindow?.DataContext is MainViewModel viewModel &&
             viewModel.ShowTrayNotification;
         if (!showNotification || _trayHintShown || _trayIcon is null || !_trayIcon.Visible)
@@ -186,4 +251,85 @@ public partial class App : Wpf.Application
             "通知領域に格納しました。ダブルクリックで表示、右クリックの［終了］で終了できます。",
             Forms.ToolTipIcon.Info);
     }
+
+    private async Task ApplyModeFromTrayAsync(string modeId)
+    {
+        if (_mainViewModel is null)
+        {
+            return;
+        }
+
+        var mode = _mainViewModel.Modes.FirstOrDefault(card =>
+            string.Equals(card.Mode.Id, modeId, StringComparison.OrdinalIgnoreCase));
+        if (mode is null)
+        {
+            return;
+        }
+
+        var result = await _mainViewModel.ApplyModeByIdAsync(modeId);
+        if (result is null || _trayIcon is null || !_trayIcon.Visible)
+        {
+            return;
+        }
+
+        var title = result.IsSuccess
+            ? $"{mode.Name}モードに切り替えました"
+            : result.Steps.Any(step => step.IsSuccess)
+                ? $"{mode.Name}モードを一部適用しました"
+                : $"{mode.Name}モードを適用できませんでした";
+        var message = result.IsSuccess
+            ? "画面OFF、スリープ、電源モードを適用しました。"
+            : string.Join("\n", result.Steps.Select(step =>
+                $"{(step.IsSuccess ? "✓" : "×")} {step.Name}"));
+        _trayIcon.ShowBalloonTip(
+            4000,
+            title,
+            message,
+            result.IsSuccess ? Forms.ToolTipIcon.Info : Forms.ToolTipIcon.Warning);
+    }
+
+    private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_mainViewModel is null)
+        {
+            return;
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.CloseButtonBehavior))
+        {
+            UpdateTrayIconVisibility(_mainViewModel.CloseButtonBehavior);
+        }
+        else if (e.PropertyName is nameof(MainViewModel.CurrentModeId) or nameof(MainViewModel.IsBusy))
+        {
+            UpdateTrayModeState();
+        }
+    }
+
+    private void UpdateTrayModeState()
+    {
+        if (_mainViewModel is null)
+        {
+            return;
+        }
+
+        foreach (var (modeId, item) in _trayModeItems)
+        {
+            item.Checked = string.Equals(
+                modeId,
+                _mainViewModel.CurrentModeId,
+                StringComparison.OrdinalIgnoreCase);
+            item.Enabled = !_mainViewModel.IsBusy;
+        }
+
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Text = _mainViewModel.CurrentModeId is null
+                ? "PC Mode Switcher"
+                : $"PC Mode Switcher - {_mainViewModel.CurrentModeName}";
+        }
+    }
+
+    internal static bool IsStartupLaunch(IEnumerable<string> arguments) =>
+        arguments.Any(argument =>
+            string.Equals(argument, "--startup", StringComparison.OrdinalIgnoreCase));
 }
