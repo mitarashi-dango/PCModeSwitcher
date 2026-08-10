@@ -2,6 +2,8 @@
 
 PC Mode Switcherは、Windows 11の画面OFF時間、スリープ時間、電源プランを、GAME / WORK / NORMALの3モードとしてまとめて切り替えるWPFアプリです。
 
+Windowsが報告する実際のバッテリー有無を判定し、バッテリー未搭載PCではバッテリー用の画面OFF・スリープ設定を表示せず、適用もしません。保存済みのバッテリー設定値は保持されます。
+
 ## 安全性
 
 - WinBridgeとは独立したプロジェクトです。
@@ -50,4 +52,4 @@ ZIPには実行ファイル、利用者向けREADME、リリースノートが�
 dotnet run --project .\tests\PCModeSwitcher.Tests\PCModeSwitcher.Tests.csproj -c Release
 ```
 
-既定モード、JSONの保存と再読み込み、スタートアップ起動引数、多重起動の検出と通知、通知領域向けのモード適用、Windows Power APIによる電源プランの読み取りを検証します。実際のWindows設定は変更しません。
+既定モード、JSONの保存と再読み込み、スタートアップ起動引数、多重起動の検出と通知、通知領域向けのモード適用、バッテリー有無による表示・適用の切り替え、Windows Power APIによる電源プランの読み取りを検証します。実際のWindows設定は変更しません。

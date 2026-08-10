@@ -4,6 +4,9 @@
         Title="モード設定" Width="620" Height="620"
         ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+  </Window.Resources>
   <Grid Margin="28">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
@@ -34,17 +37,21 @@
       <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DisplayChoices}"
                 SelectedItem="{Binding DisplayAc}" Margin="0,6"/>
 
-      <TextBlock Grid.Row="1" Text="画面OFF（バッテリー）" VerticalAlignment="Center" Margin="0,8"/>
+      <TextBlock Grid.Row="1" Text="画面OFF（バッテリー）" VerticalAlignment="Center" Margin="0,8"
+                 Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
       <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding DisplayChoices}"
-                SelectedItem="{Binding DisplayBattery}" Margin="0,6"/>
+                SelectedItem="{Binding DisplayBattery}" Margin="0,6"
+                Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
       <TextBlock Grid.Row="2" Text="スリープ（電源接続時）" VerticalAlignment="Center" Margin="0,8"/>
       <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SleepChoices}"
                 SelectedItem="{Binding SleepAc}" Margin="0,6"/>
 
-      <TextBlock Grid.Row="3" Text="スリープ（バッテリー）" VerticalAlignment="Center" Margin="0,8"/>
+      <TextBlock Grid.Row="3" Text="スリープ（バッテリー）" VerticalAlignment="Center" Margin="0,8"
+                 Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
       <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding SleepChoices}"
-                SelectedItem="{Binding SleepBattery}" Margin="0,6"/>
+                SelectedItem="{Binding SleepBattery}" Margin="0,6"
+                Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
       <TextBlock Grid.Row="4" Text="電源モード" VerticalAlignment="Center" Margin="0,8"/>
       <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding PowerPlans}"

@@ -18,13 +18,15 @@ public sealed class PowerSettingsService
     private readonly Func<bool> _hasBattery;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
-    public PowerSettingsService() : this(new PowerPolicyAccessor(), HasBattery) { }
+    public PowerSettingsService() : this(new PowerPolicyAccessor(), DetectBattery) { }
 
     internal PowerSettingsService(IPowerPolicyAccessor policy, Func<bool>? hasBattery = null)
     {
         _policy = policy;
         _hasBattery = hasBattery ?? (() => false);
     }
+
+    public bool HasBattery => _hasBattery();
 
     public async Task<OperationResult<IReadOnlyList<PowerPlan>>> GetAvailablePlansAsync()
     {
@@ -58,7 +60,7 @@ public sealed class PowerSettingsService
                 };
             }
 
-            var hasBattery = _hasBattery();
+            var hasBattery = HasBattery;
             var display = ApplySettingPair(
                 mode.PowerPlanId,
                 VideoSubgroupId,
@@ -205,7 +207,7 @@ public sealed class PowerSettingsService
                 string.Join("; ", new[] { failureDetails }.Concat(errors).Where(value => !string.IsNullOrWhiteSpace(value))));
     }
 
-    private static bool HasBattery() =>
+    private static bool DetectBattery() =>
         GetSystemPowerStatus(out var status) &&
         status.BatteryFlag != 255 &&
         (status.BatteryFlag & 128) == 0;

@@ -13,6 +13,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("アプリ設定の連携と失敗時復元", TestAppPreferenceIntegrationAsync),
     ("多重起動の検出と既存画面への通知", TestSingleInstanceCoordinatorAsync),
     ("利用可能な電源プランの読み取り", TestPowerPlanEnumerationAsync),
+    ("バッテリー有無による表示と適用の切り替え", TestBatteryAwareBehaviorAsync),
     ("モードの3設定一括適用", TestModeApplyAsync),
     ("途中失敗時の復元と結果表示", TestPartialFailureRollbackAsync)
 };
@@ -300,6 +301,39 @@ static async Task TestModeApplyAsync()
         "ACスリープ時間が適用されていません。");
     Assert(policy.GetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Dc) == mode.SleepTimeoutBattery,
         "DCスリープ時間が適用されていません。");
+}
+
+static async Task TestBatteryAwareBehaviorAsync()
+{
+    var planId = Guid.NewGuid();
+    var mode = CreateTestMode(planId);
+    var batteryService = new PowerSettingsService(new FakePowerPolicyAccessor(planId), () => true);
+    Assert(batteryService.HasBattery, "バッテリー搭載PCがバッテリーなしとして判定されました。");
+
+    var batteryCard = new ModeCardViewModel(mode, _ => "テストプラン", true);
+    Assert(batteryCard.DisplaySummary.Contains("バッテリー", StringComparison.Ordinal),
+        "バッテリー搭載PCでバッテリー設定が概要から消えています。");
+    Assert(batteryCard.SleepSummary.Contains("バッテリー", StringComparison.Ordinal),
+        "バッテリー搭載PCでバッテリー設定が概要から消えています。");
+
+    var policy = new FakePowerPolicyAccessor(planId);
+    var originalDisplayDc = policy.GetValue(PowerSettingsService.DisplayTimeoutId, PowerSource.Dc);
+    var originalSleepDc = policy.GetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Dc);
+    var desktopService = new PowerSettingsService(policy, () => false);
+    Assert(!desktopService.HasBattery, "バッテリーなしPCがバッテリーありとして判定されました。");
+
+    var desktopCard = new ModeCardViewModel(mode, _ => "テストプラン", false);
+    Assert(desktopCard.DisplaySummary == $"AC {ModeCardViewModel.FormatTimeout(mode.DisplayTimeoutAc)}",
+        "バッテリーなしPCの画面OFF概要がAC設定だけになっていません。");
+    Assert(desktopCard.SleepSummary == $"AC {ModeCardViewModel.FormatTimeout(mode.SleepTimeoutAc)}",
+        "バッテリーなしPCのスリープ概要がAC設定だけになっていません。");
+
+    var result = await desktopService.ApplyModeAsync(mode);
+    Assert(result.IsSuccess, result.ToUserMessage(mode.Name));
+    Assert(policy.GetValue(PowerSettingsService.DisplayTimeoutId, PowerSource.Dc) == originalDisplayDc,
+        "バッテリーなしPCでDC画面OFF時間が変更されました。");
+    Assert(policy.GetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Dc) == originalSleepDc,
+        "バッテリーなしPCでDCスリープ時間が変更されました。");
 }
 
 static async Task TestPartialFailureRollbackAsync()

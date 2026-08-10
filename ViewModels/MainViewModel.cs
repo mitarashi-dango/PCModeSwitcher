@@ -41,6 +41,7 @@ public sealed class MainViewModel : ObservableObject
     public CloseButtonBehavior CloseButtonBehavior => _settings.CloseButtonBehavior;
     public bool ShowTrayNotification => _settings.ShowTrayNotification;
     public bool StartWithWindows => _settings.StartWithWindows;
+    public string AppVersion { get; } = GetAppVersion();
     public IReadOnlyList<ModeHotkey> Hotkeys => _settings.Hotkeys.Select(hotkey => hotkey.Copy()).ToList();
     public AsyncRelayCommand ApplyModeCommand { get; }
     public AsyncRelayCommand EditModeCommand { get; }
@@ -103,8 +104,9 @@ public sealed class MainViewModel : ObservableObject
                 StatusMessage = plansResult.UserMessage;
             }
 
+            var hasBattery = _powerService.HasBattery;
             foreach (var mode in _settings.Modes)
-                Modes.Add(new ModeCardViewModel(mode, GetPowerPlanName));
+                Modes.Add(new ModeCardViewModel(mode, GetPowerPlanName, hasBattery));
             SetCurrentMode(_settings.LastAppliedModeId);
         }
         finally
@@ -236,6 +238,7 @@ public sealed class MainViewModel : ObservableObject
         var editor = new ModeEditorWindow(
             card.Mode.Copy(),
             PowerPlans.ToList(),
+            card.HasBattery,
             Application.Current.MainWindow);
         if (editor.ShowDialog() != true || editor.EditedMode is null)
             return;
@@ -278,6 +281,12 @@ public sealed class MainViewModel : ObservableObject
 
     private string GetPowerPlanName(Guid planId) =>
         PowerPlans.FirstOrDefault(plan => plan.Id == planId)?.Name ?? "利用不可";
+
+    private static string GetAppVersion()
+    {
+        var version = typeof(MainViewModel).Assembly.GetName().Version;
+        return version is null ? "バージョン不明" : $"v{version.ToString(3)}";
+    }
 
     private void NotifyAppPreferencesChanged()
     {

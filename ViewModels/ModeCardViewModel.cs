@@ -5,21 +5,24 @@ namespace PCModeSwitcher.ViewModels;
 public sealed class ModeCardViewModel : ObservableObject
 {
     private readonly Func<Guid, string> _powerPlanName;
+    private readonly bool _hasBattery;
     private PcMode _mode;
 
-    public ModeCardViewModel(PcMode mode, Func<Guid, string> powerPlanName)
+    public ModeCardViewModel(PcMode mode, Func<Guid, string> powerPlanName, bool hasBattery)
     {
         _mode = mode;
         _powerPlanName = powerPlanName;
+        _hasBattery = hasBattery;
     }
 
     public PcMode Mode => _mode;
+    public bool HasBattery => _hasBattery;
     public string Name => _mode.Name;
     public string Icon => _mode.Icon;
     public string DisplaySummary =>
-        $"AC {FormatTimeout(_mode.DisplayTimeoutAc)} / バッテリー {FormatTimeout(_mode.DisplayTimeoutBattery)}";
+        FormatSummary(_mode.DisplayTimeoutAc, _mode.DisplayTimeoutBattery);
     public string SleepSummary =>
-        $"AC {FormatTimeout(_mode.SleepTimeoutAc)} / バッテリー {FormatTimeout(_mode.SleepTimeoutBattery)}";
+        FormatSummary(_mode.SleepTimeoutAc, _mode.SleepTimeoutBattery);
     public string PowerPlanName => _powerPlanName(_mode.PowerPlanId);
 
     public void Replace(PcMode mode)
@@ -34,6 +37,10 @@ public sealed class ModeCardViewModel : ObservableObject
     }
 
     public void RefreshPlanName() => OnPropertyChanged(nameof(PowerPlanName));
+
+    private string FormatSummary(uint acSeconds, uint batterySeconds) => _hasBattery
+        ? $"AC {FormatTimeout(acSeconds)} / バッテリー {FormatTimeout(batterySeconds)}"
+        : $"AC {FormatTimeout(acSeconds)}";
 
     public static string FormatTimeout(uint seconds) => seconds switch
     {
