@@ -34,7 +34,11 @@ public sealed class SettingsService
             await using var stream = new FileStream(
                 _settingsPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions);
-            if (settings is null || !IsValid(settings))
+            if (settings is null)
+                return OperationResult<AppSettings>.Failure("保存済みのモード設定を読み込めませんでした。");
+
+            Normalize(settings);
+            if (!IsValid(settings))
                 return OperationResult<AppSettings>.Failure("保存済みのモード設定を読み込めませんでした。");
 
             return OperationResult<AppSettings>.Success(settings);
@@ -48,6 +52,7 @@ public sealed class SettingsService
 
     public async Task<OperationResult> SaveAsync(AppSettings settings)
     {
+        Normalize(settings);
         if (!IsValid(settings))
             return OperationResult.Failure("モード設定が正しくないため保存しませんでした。");
 
@@ -110,12 +115,35 @@ public sealed class SettingsService
                 SleepTimeoutAc = 15 * 60, SleepTimeoutBattery = 15 * 60,
                 PowerPlanId = PowerSettingsService.BalancedSchemeId
             }
-        ]
+        ],
+        Hotkeys = CreateDefaultHotkeys()
     };
+
+    public static List<ModeHotkey> CreateDefaultHotkeys() =>
+    [
+        new() { ModeId = "game" },
+        new() { ModeId = "work" },
+        new() { ModeId = "normal" }
+    ];
+
+    private static void Normalize(AppSettings settings)
+    {
+        settings.Modes ??= [];
+        settings.Hotkeys ??= [];
+        foreach (var defaultHotkey in CreateDefaultHotkeys())
+        {
+            if (!settings.Hotkeys.Any(hotkey =>
+                string.Equals(hotkey.ModeId, defaultHotkey.ModeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                settings.Hotkeys.Add(defaultHotkey);
+            }
+        }
+    }
 
     private static bool IsValid(AppSettings settings) =>
         settings.Version == 1 &&
         Enum.IsDefined(settings.CloseButtonBehavior) &&
+        HotkeyValidator.Validate(settings.Hotkeys).IsSuccess &&
         settings.Modes.Count == 3 &&
         settings.Modes.All(mode =>
             !string.IsNullOrWhiteSpace(mode.Id) &&

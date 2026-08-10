@@ -7,4 +7,6 @@ public sealed class AppSettings
     public string? LastAppliedModeId { get; set; }
     public CloseButtonBehavior CloseButtonBehavior { get; set; } = CloseButtonBehavior.MinimizeToTray;
     public bool ShowTrayNotification { get; set; }
+    public bool StartWithWindows { get; set; }
+    public List<ModeHotkey> Hotkeys { get; set; } = [];
 }

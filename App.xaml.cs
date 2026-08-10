@@ -14,7 +14,9 @@ public partial class App : Wpf.Application
     private Forms.NotifyIcon? _trayIcon;
     private System.Drawing.Icon? _applicationIcon;
     private MainWindow? _mainWindow;
+    private MainViewModel? _mainViewModel;
     private SingleInstanceCoordinator? _singleInstanceCoordinator;
+    private GlobalHotkeyService? _globalHotkeyService;
     private bool _trayHintShown;
 
     protected override async void OnStartup(Wpf.StartupEventArgs e)
@@ -42,10 +44,19 @@ public partial class App : Wpf.Application
 
         var settingsService = new SettingsService();
         var powerService = new PowerSettingsService();
-        var viewModel = new MainViewModel(settingsService, powerService);
+        var startupService = new StartupService();
+        _globalHotkeyService = new GlobalHotkeyService();
+        var viewModel = new MainViewModel(
+            settingsService,
+            powerService,
+            startupService,
+            _globalHotkeyService);
         var window = new MainWindow { DataContext = viewModel };
         _mainWindow = window;
+        _mainViewModel = viewModel;
         MainWindow = window;
+        _globalHotkeyService.Attach(window);
+        _globalHotkeyService.HotkeyPressed += OnHotkeyPressed;
         CreateTrayIcon();
         viewModel.PropertyChanged += (_, args) =>
         {
@@ -72,6 +83,14 @@ public partial class App : Wpf.Application
 
         _applicationIcon?.Dispose();
         _applicationIcon = null;
+
+        if (_globalHotkeyService is not null)
+        {
+            _globalHotkeyService.HotkeyPressed -= OnHotkeyPressed;
+            _globalHotkeyService.Dispose();
+            _globalHotkeyService = null;
+        }
+        _mainViewModel = null;
 
         if (_singleInstanceCoordinator is not null)
         {
@@ -124,6 +143,17 @@ public partial class App : Wpf.Application
     private void OnActivationRequested(object? sender, EventArgs e)
     {
         Dispatcher.BeginInvoke(RestoreMainWindow);
+    }
+
+    private void OnHotkeyPressed(object? sender, ModeHotkeyPressedEventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            if (_mainViewModel is not null)
+            {
+                await _mainViewModel.ApplyModeByIdAsync(e.ModeId);
+            }
+        }));
     }
 
     private void UpdateTrayIconVisibility(CloseButtonBehavior behavior)

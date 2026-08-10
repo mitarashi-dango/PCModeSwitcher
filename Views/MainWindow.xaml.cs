@@ -60,6 +60,8 @@ public partial class MainWindow : Window
         var settingsWindow = new SettingsWindow(
             viewModel.CloseButtonBehavior,
             viewModel.ShowTrayNotification,
+            viewModel.StartWithWindows,
+            viewModel.Hotkeys,
             this);
         if (settingsWindow.ShowDialog() != true)
         {
@@ -68,7 +70,9 @@ public partial class MainWindow : Window
 
         var result = await viewModel.SetAppPreferencesAsync(
             settingsWindow.SelectedBehavior,
-            settingsWindow.ShowTrayNotification);
+            settingsWindow.ShowTrayNotification,
+            settingsWindow.StartWithWindows,
+            settingsWindow.Hotkeys);
         if (!result.IsSuccess)
         {
             MessageBox.Show(
