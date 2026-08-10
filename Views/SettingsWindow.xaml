@@ -1,0 +1,48 @@
+<Window x:Class="PCModeSwitcher.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="アプリ設定" Width="500" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="28">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel>
+      <TextBlock Text="閉じるボタンの動作" FontSize="20" FontWeight="SemiBold"/>
+      <TextBlock Text="メイン画面右上の × を押したときの動作を選べます。"
+                 Foreground="{StaticResource MutedBrush}" Margin="0,6,0,20"/>
+    </StackPanel>
+
+    <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            CornerRadius="10" Padding="18">
+      <StackPanel>
+        <RadioButton x:Name="MinimizeToTrayOption" GroupName="CloseBehavior"
+                     Content="通知領域に格納" FontWeight="SemiBold"/>
+        <TextBlock Text="アプリは動作を続けます。通知領域アイコンから再表示・終了できます。"
+                   Foreground="{StaticResource MutedBrush}" Margin="24,4,0,18"/>
+        <RadioButton x:Name="ExitApplicationOption" GroupName="CloseBehavior"
+                     Content="アプリを終了" FontWeight="SemiBold"/>
+        <TextBlock Text="従来どおり、閉じるボタンでアプリを完全に終了します。"
+                   Foreground="{StaticResource MutedBrush}" Margin="24,4,0,18"/>
+        <Separator/>
+        <StackPanel Margin="0,16,0,0"
+                    IsEnabled="{Binding IsChecked, ElementName=MinimizeToTrayOption}">
+          <CheckBox x:Name="ShowTrayNotificationOption"
+                    Content="通知領域へ格納したときに通知を表示" FontWeight="SemiBold"/>
+          <TextBlock Text="有効にした場合も、通知はアプリを起動してから最初の1回だけ表示します。"
+                     Foreground="{StaticResource MutedBrush}" Margin="24,4,0,0"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+      <Button Content="キャンセル" IsCancel="True"/>
+      <Button Content="保存" Style="{StaticResource PrimaryButtonStyle}" IsDefault="True"
+              Click="Save_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

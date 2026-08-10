@@ -34,6 +34,8 @@ public sealed class MainViewModel : ObservableObject
     public string CurrentModeName { get => _currentModeName; private set => SetProperty(ref _currentModeName, value); }
     public string CurrentModeIcon { get => _currentModeIcon; private set => SetProperty(ref _currentModeIcon, value); }
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
+    public CloseButtonBehavior CloseButtonBehavior => _settings.CloseButtonBehavior;
+    public bool ShowTrayNotification => _settings.ShowTrayNotification;
     public AsyncRelayCommand ApplyModeCommand { get; }
     public AsyncRelayCommand EditModeCommand { get; }
 
@@ -60,6 +62,8 @@ public sealed class MainViewModel : ObservableObject
                 _settings = SettingsService.CreateDefaults();
                 StatusMessage = $"{settingsResult.UserMessage} 初期設定で開始しました。";
             }
+            OnPropertyChanged(nameof(CloseButtonBehavior));
+            OnPropertyChanged(nameof(ShowTrayNotification));
 
             var plansResult = await _powerService.GetAvailablePlansAsync();
             if (plansResult.IsSuccess && plansResult.Value is not null)
@@ -81,6 +85,35 @@ public sealed class MainViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    public async Task<OperationResult> SetAppPreferencesAsync(
+        CloseButtonBehavior behavior,
+        bool showTrayNotification)
+    {
+        if (!Enum.IsDefined(behavior))
+            return OperationResult.Failure("閉じるボタンの動作が正しくありません。");
+
+        var previousBehavior = _settings.CloseButtonBehavior;
+        var previousShowTrayNotification = _settings.ShowTrayNotification;
+        _settings.CloseButtonBehavior = behavior;
+        _settings.ShowTrayNotification = showTrayNotification;
+        OnPropertyChanged(nameof(CloseButtonBehavior));
+        OnPropertyChanged(nameof(ShowTrayNotification));
+
+        var result = await _settingsService.SaveAsync(_settings);
+        if (!result.IsSuccess)
+        {
+            _settings.CloseButtonBehavior = previousBehavior;
+            _settings.ShowTrayNotification = previousShowTrayNotification;
+            OnPropertyChanged(nameof(CloseButtonBehavior));
+            OnPropertyChanged(nameof(ShowTrayNotification));
+            StatusMessage = result.UserMessage;
+            return result;
+        }
+
+        StatusMessage = "アプリ設定を保存しました。";
+        return OperationResult.Success(StatusMessage);
     }
 
     private async Task ApplyModeAsync(object? parameter)

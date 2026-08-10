@@ -42,6 +42,10 @@ static Task TestDefaultModesAsync()
         "既定モードの並びが正しくありません。");
     Assert(settings.Modes[0].DisplayTimeoutAc == 0 && settings.Modes[0].SleepTimeoutAc == 0,
         "GAMEの既定タイムアウトが正しくありません。");
+    Assert(settings.CloseButtonBehavior == CloseButtonBehavior.MinimizeToTray,
+        "閉じるボタンの既定動作が通知領域への格納ではありません。");
+    Assert(!settings.ShowTrayNotification,
+        "通知領域への格納通知が既定で有効になっています。");
     return Task.CompletedTask;
 }
 
@@ -54,6 +58,8 @@ static async Task TestSettingsRoundTripAsync()
         var settings = SettingsService.CreateDefaults();
         settings.LastAppliedModeId = "work";
         settings.Modes[1].DisplayTimeoutAc = 15 * 60;
+        settings.CloseButtonBehavior = CloseButtonBehavior.ExitApplication;
+        settings.ShowTrayNotification = true;
 
         var save = await service.SaveAsync(settings);
         Assert(save.IsSuccess, $"保存に失敗しました: {save.UserMessage}");
@@ -63,6 +69,9 @@ static async Task TestSettingsRoundTripAsync()
         var loaded = load.Value ?? throw new InvalidOperationException("設定データがありません。");
         Assert(loaded.LastAppliedModeId == "work", "最後に適用したモードが保持されていません。");
         Assert(loaded.Modes[1].DisplayTimeoutAc == 15 * 60, "編集した時間が保持されていません。");
+        Assert(loaded.CloseButtonBehavior == CloseButtonBehavior.ExitApplication,
+            "閉じるボタンの動作が保持されていません。");
+        Assert(loaded.ShowTrayNotification, "通知表示の設定が保持されていません。");
     }
     finally
     {

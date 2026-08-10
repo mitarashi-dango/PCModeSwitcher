@@ -7,11 +7,18 @@
   <Grid IsEnabled="{Binding IsInteractionEnabled}">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <Border Background="#172033" Padding="32,24">
+    <Menu Background="White" Padding="8,2">
+      <MenuItem Header="設定">
+        <MenuItem Header="アプリ設定..." Click="Settings_Click"/>
+      </MenuItem>
+    </Menu>
+
+    <Border Grid.Row="1" Background="#172033" Padding="32,24">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
@@ -34,7 +41,7 @@
       </Grid>
     </Border>
 
-    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="28">
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="28">
       <ItemsControl ItemsSource="{Binding Modes}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -77,7 +84,7 @@
       </ItemsControl>
     </ScrollViewer>
 
-    <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource BorderBrush}"
+    <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource BorderBrush}"
             BorderThickness="0,1,0,0" Padding="28,16">
       <TextBlock Text="{Binding StatusMessage}" FontSize="14"/>
     </Border>

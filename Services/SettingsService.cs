@@ -115,6 +115,7 @@ public sealed class SettingsService
 
     private static bool IsValid(AppSettings settings) =>
         settings.Version == 1 &&
+        Enum.IsDefined(settings.CloseButtonBehavior) &&
         settings.Modes.Count == 3 &&
         settings.Modes.All(mode =>
             !string.IsNullOrWhiteSpace(mode.Id) &&

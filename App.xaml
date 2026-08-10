@@ -15,6 +15,7 @@
       <Setter Property="FontFamily" Value="Segoe UI"/>
       <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
       <Setter Property="Background" Value="{StaticResource PageBrush}"/>
+      <Setter Property="Icon" Value="/Assets/AppIcon.ico"/>
     </Style>
     <Style TargetType="TextBlock">
       <Setter Property="TextWrapping" Value="Wrap"/>
