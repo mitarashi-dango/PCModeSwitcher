@@ -1,5 +1,9 @@
+.vs/
 bin/
 obj/
+artifacts/
+TestResults/
 tests/**/bin/
 tests/**/obj/
 *.user
+*.suo

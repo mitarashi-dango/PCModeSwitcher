@@ -18,6 +18,21 @@ dotnet build .\PCModeSwitcher.csproj -c Release
 
 実行ファイルは通常 `bin\Release\net8.0-windows10.0.22621.0\win-x64\PCModeSwitcher.exe` に作成されます。
 
+## 配布パッケージ
+
+次のコマンドで、.NETの追加インストールが不要な自己完結・単一EXEのwin-x64版を作成できます。
+
+```powershell
+.\scripts\Publish-Release.ps1
+```
+
+`artifacts` フォルダーへ次のファイルが作成されます。
+
+- `PCModeSwitcher-v0.1.0-win-x64.zip`
+- `SHA256SUMS.txt`
+
+ZIPには実行ファイル、利用者向けREADME、リリースノートが含まれます。コード署名は行っていないため、ダウンロードした環境ではSmartScreenの警告が表示される場合があります。
+
 設定は `%LOCALAPPDATA%\PCModeSwitcher\settings.json` に保存されます。
 
 設定メニューでは、右上の閉じるボタンを押したときにWindowsの通知領域へ格納するか、アプリを終了するかを選べます。通知領域アイコンはダブルクリックで再表示し、右クリックメニューの「終了」で完全終了します。格納時の通知も設定で有効・無効を選べます（既定は無効、有効時も起動中の初回だけ表示）。
