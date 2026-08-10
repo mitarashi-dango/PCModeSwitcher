@@ -49,6 +49,11 @@ if ([string]::IsNullOrWhiteSpace($version)) {
     throw "PCModeSwitcher.csproj からバージョンを取得できませんでした。"
 }
 
+$releaseNotesPath = Join-Path $projectRoot "docs\RELEASE_NOTES_$version.md"
+if (-not (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf)) {
+    throw "バージョン $version のリリースノートがありません: $releaseNotesPath"
+}
+
 $packageName = "PCModeSwitcher-v$version-$Runtime"
 $publishRoot = Assert-ChildPath -Path (Join-Path $OutputRoot "publish") -Parent $OutputRoot
 $publishDirectory = Assert-ChildPath -Path (Join-Path $publishRoot $packageName) -Parent $OutputRoot
@@ -91,7 +96,7 @@ New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
 Copy-Item -LiteralPath $executablePath -Destination $packageDirectory
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\DISTRIBUTION_README.md") `
     -Destination (Join-Path $packageDirectory "README.md")
-Copy-Item -LiteralPath (Join-Path $projectRoot "docs\RELEASE_NOTES_0.1.0.md") `
+Copy-Item -LiteralPath $releaseNotesPath `
     -Destination (Join-Path $packageDirectory "RELEASE_NOTES.md")
 
 Compress-Archive -LiteralPath $packageDirectory -DestinationPath $zipPath -CompressionLevel Optimal
@@ -105,4 +110,3 @@ Write-Host "配布パッケージを作成しました。"
 Write-Host "ZIP: $($zipInfo.FullName)"
 Write-Host "サイズ: $([Math]::Round($zipInfo.Length / 1MB, 2)) MB"
 Write-Host "SHA-256: $hash"
-
