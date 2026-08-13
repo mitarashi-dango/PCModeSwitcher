@@ -26,7 +26,7 @@
         </Grid.ColumnDefinitions>
         <StackPanel>
           <TextBlock Text="PC Mode Switcher" Foreground="White" FontSize="28" FontWeight="SemiBold"/>
-          <TextBlock Text="使い方に合わせて、PCの電源設定を1クリックで切り替えます。"
+          <TextBlock Text="使い方に合わせて、PC設定を1クリックで切り替えます。"
                      Foreground="#CBD5E1" Margin="0,4,0,0"/>
         </StackPanel>
         <Border Grid.Column="1" Background="#243047" CornerRadius="12" Padding="18,10">
@@ -75,7 +75,7 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border Style="{StaticResource CardStyle}" MinHeight="390">
+            <Border Style="{StaticResource CardStyle}" MinHeight="420">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
@@ -118,6 +118,8 @@
                   <TextBlock Text="{Binding SleepSummary}" Margin="0,2,0,14"/>
                   <TextBlock Text="電源モード" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
                   <TextBlock Text="{Binding PowerPlanName}" Margin="0,2,0,14"/>
+                  <TextBlock Text="マイク" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                  <TextBlock Text="{Binding MicrophoneSummary}" Margin="0,2,0,14"/>
                 </StackPanel>
                 <StackPanel Grid.Row="3">
                   <Button Content="適用" Style="{StaticResource PrimaryButtonStyle}"

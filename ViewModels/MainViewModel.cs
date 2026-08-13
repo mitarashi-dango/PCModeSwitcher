@@ -13,6 +13,7 @@ public sealed class MainViewModel : ObservableObject
 
     private readonly SettingsService _settingsService;
     private readonly PowerSettingsService _powerService;
+    private readonly IMicrophoneMuteService _microphoneMuteService;
     private readonly IStartupService _startupService;
     private readonly IGlobalHotkeyService _globalHotkeyService;
     private AppSettings _settings = SettingsService.CreateDefaults();
@@ -20,7 +21,7 @@ public sealed class MainViewModel : ObservableObject
     private string? _currentModeId;
     private string _currentModeName = "確認中";
     private string _currentModeIcon = "…";
-    private string _statusMessage = "モードを選ぶと、3つの設定をまとめて切り替えます。";
+    private string _statusMessage = "モードを選ぶと、4つの設定をまとめて切り替えます。";
 
     public ObservableCollection<ModeCardViewModel> Modes { get; } = [];
     public ObservableCollection<PowerPlan> PowerPlans { get; } = [];
@@ -52,11 +53,13 @@ public sealed class MainViewModel : ObservableObject
     public MainViewModel(
         SettingsService settingsService,
         PowerSettingsService powerService,
+        IMicrophoneMuteService microphoneMuteService,
         IStartupService startupService,
         IGlobalHotkeyService globalHotkeyService)
     {
         _settingsService = settingsService;
         _powerService = powerService;
+        _microphoneMuteService = microphoneMuteService;
         _startupService = startupService;
         _globalHotkeyService = globalHotkeyService;
         ApplyModeCommand = new AsyncRelayCommand(ApplyModeAsync, _ => !IsBusy);
@@ -233,7 +236,21 @@ public sealed class MainViewModel : ObservableObject
         StatusMessage = $"{card.Name}モードを適用しています…";
         try
         {
-            var result = await _powerService.ApplyModeAsync(card.Mode);
+            var powerResult = await _powerService.ApplyModeAsync(card.Mode);
+            var microphoneResult = _microphoneMuteService.Apply(card.Mode.MicrophoneMute);
+            var result = new ModeApplyResult
+            {
+                Steps =
+                [
+                    .. powerResult.Steps,
+                    new ApplyStepResult(
+                        "マイク",
+                        microphoneResult.IsSuccess,
+                        microphoneResult.UserMessage,
+                        microphoneResult.TechnicalDetails,
+                        card.Mode.MicrophoneMute == MicrophoneMuteSetting.NoChange)
+                ]
+            };
             StatusMessage = result.ToUserMessage(card.Name);
 
             if (result.IsSuccess)

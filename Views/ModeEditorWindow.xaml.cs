@@ -13,11 +13,18 @@ public partial class ModeEditorWindow : Window
     public ObservableCollection<TimeoutChoice> DisplayChoices { get; } = CreateChoices([1, 2, 5, 10, 15, 30, 60, 0]);
     public ObservableCollection<TimeoutChoice> SleepChoices { get; } = CreateChoices([1, 5, 10, 15, 30, 60, 120, 0]);
     public ObservableCollection<PowerPlan> PowerPlans { get; }
+    public ObservableCollection<MicrophoneMuteChoice> MicrophoneChoices { get; } =
+    [
+        new(MicrophoneMuteSetting.NoChange, "変更しない"),
+        new(MicrophoneMuteSetting.Mute, "ミュート"),
+        new(MicrophoneMuteSetting.Unmute, "ミュート解除")
+    ];
     public TimeoutChoice? DisplayAc { get; set; }
     public TimeoutChoice? DisplayBattery { get; set; }
     public TimeoutChoice? SleepAc { get; set; }
     public TimeoutChoice? SleepBattery { get; set; }
     public PowerPlan? SelectedPowerPlan { get; set; }
+    public MicrophoneMuteChoice? SelectedMicrophoneMute { get; set; }
     public PcMode? EditedMode { get; private set; }
 
     public ModeEditorWindow(PcMode mode, IReadOnlyList<PowerPlan> plans, bool hasBattery, Window owner)
@@ -32,13 +39,15 @@ public partial class ModeEditorWindow : Window
         SleepAc = FindOrAdd(SleepChoices, mode.SleepTimeoutAc);
         SleepBattery = FindOrAdd(SleepChoices, mode.SleepTimeoutBattery);
         SelectedPowerPlan = PowerPlans.FirstOrDefault(plan => plan.Id == mode.PowerPlanId);
+        SelectedMicrophoneMute = MicrophoneChoices.FirstOrDefault(choice =>
+            choice.Setting == mode.MicrophoneMute);
         DataContext = this;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         if (DisplayAc is null || DisplayBattery is null || SleepAc is null ||
-            SleepBattery is null || SelectedPowerPlan is null)
+            SleepBattery is null || SelectedPowerPlan is null || SelectedMicrophoneMute is null)
         {
             MessageBox.Show(
                 "すべての設定を選択してください。",
@@ -54,6 +63,7 @@ public partial class ModeEditorWindow : Window
         EditedMode.SleepTimeoutAc = SleepAc.Seconds;
         EditedMode.SleepTimeoutBattery = SleepBattery.Seconds;
         EditedMode.PowerPlanId = SelectedPowerPlan.Id;
+        EditedMode.MicrophoneMute = SelectedMicrophoneMute.Setting;
         DialogResult = true;
     }
 

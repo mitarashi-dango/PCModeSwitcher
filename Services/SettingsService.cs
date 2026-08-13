@@ -105,28 +105,32 @@ public sealed class SettingsService
                 Id = "game", Name = "GAME", Icon = "🎮",
                 DisplayTimeoutAc = 0, DisplayTimeoutBattery = 0,
                 SleepTimeoutAc = 0, SleepTimeoutBattery = 0,
-                PowerPlanId = PowerSettingsService.HighPerformanceSchemeId
+                PowerPlanId = PowerSettingsService.HighPerformanceSchemeId,
+                MicrophoneMute = MicrophoneMuteSetting.NoChange
             },
             new PcMode
             {
                 Id = "work", Name = "WORK", Icon = "💼",
                 DisplayTimeoutAc = 10 * 60, DisplayTimeoutBattery = 10 * 60,
                 SleepTimeoutAc = 30 * 60, SleepTimeoutBattery = 30 * 60,
-                PowerPlanId = PowerSettingsService.BalancedSchemeId
+                PowerPlanId = PowerSettingsService.BalancedSchemeId,
+                MicrophoneMute = MicrophoneMuteSetting.NoChange
             },
             new PcMode
             {
                 Id = "normal", Name = "NORMAL", Icon = "🖥",
                 DisplayTimeoutAc = 5 * 60, DisplayTimeoutBattery = 5 * 60,
                 SleepTimeoutAc = 15 * 60, SleepTimeoutBattery = 15 * 60,
-                PowerPlanId = PowerSettingsService.BalancedSchemeId
+                PowerPlanId = PowerSettingsService.BalancedSchemeId,
+                MicrophoneMute = MicrophoneMuteSetting.NoChange
             },
             new PcMode
             {
                 Id = "custom", Name = "CUSTOM", Icon = "⚙",
                 DisplayTimeoutAc = 15 * 60, DisplayTimeoutBattery = 15 * 60,
                 SleepTimeoutAc = 60 * 60, SleepTimeoutBattery = 60 * 60,
-                PowerPlanId = PowerSettingsService.BalancedSchemeId
+                PowerPlanId = PowerSettingsService.BalancedSchemeId,
+                MicrophoneMute = MicrophoneMuteSetting.NoChange
             }
         ];
 
@@ -176,5 +180,6 @@ public sealed class SettingsService
             mode.DisplayTimeoutAc <= PowerSettingsService.MaximumTimeoutSeconds &&
             mode.DisplayTimeoutBattery <= PowerSettingsService.MaximumTimeoutSeconds &&
             mode.SleepTimeoutAc <= PowerSettingsService.MaximumTimeoutSeconds &&
-            mode.SleepTimeoutBattery <= PowerSettingsService.MaximumTimeoutSeconds);
+            mode.SleepTimeoutBattery <= PowerSettingsService.MaximumTimeoutSeconds &&
+            Enum.IsDefined(mode.MicrophoneMute));
 }

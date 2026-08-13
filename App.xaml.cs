@@ -51,11 +51,13 @@ public partial class App : Wpf.Application
 
         var settingsService = new SettingsService();
         var powerService = new PowerSettingsService();
+        var microphoneMuteService = new MicrophoneMuteService();
         var startupService = new StartupService();
         _globalHotkeyService = new GlobalHotkeyService();
         var viewModel = new MainViewModel(
             settingsService,
             powerService,
+            microphoneMuteService,
             startupService,
             _globalHotkeyService);
         var window = new MainWindow { DataContext = viewModel };
@@ -289,13 +291,13 @@ public partial class App : Wpf.Application
 
         var title = result.IsSuccess
             ? $"{mode.Name}モードに切り替えました"
-            : result.Steps.Any(step => step.IsSuccess)
+            : result.Steps.Any(step => step.IsSuccess && !step.IsSkipped)
                 ? $"{mode.Name}モードを一部適用しました"
                 : $"{mode.Name}モードを適用できませんでした";
         var message = result.IsSuccess
-            ? "画面OFF、スリープ、電源モードを適用しました。"
+            ? "モードに登録された設定を適用しました。"
             : string.Join("\n", result.Steps.Select(step =>
-                $"{(step.IsSuccess ? "✓" : "×")} {step.Name}"));
+                $"{(step.IsSkipped ? "–" : step.IsSuccess ? "✓" : "×")} {step.Name}"));
         _trayIcon.ShowBalloonTip(
             4000,
             title,

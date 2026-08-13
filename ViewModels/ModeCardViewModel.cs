@@ -24,6 +24,13 @@ public sealed class ModeCardViewModel : ObservableObject
     public string SleepSummary =>
         FormatSummary(_mode.SleepTimeoutAc, _mode.SleepTimeoutBattery);
     public string PowerPlanName => _powerPlanName(_mode.PowerPlanId);
+    public string MicrophoneSummary => _mode.MicrophoneMute switch
+    {
+        MicrophoneMuteSetting.NoChange => "変更しない",
+        MicrophoneMuteSetting.Mute => "ミュート",
+        MicrophoneMuteSetting.Unmute => "ミュート解除",
+        _ => "設定エラー"
+    };
 
     public void Replace(PcMode mode)
     {
@@ -34,6 +41,7 @@ public sealed class ModeCardViewModel : ObservableObject
         OnPropertyChanged(nameof(DisplaySummary));
         OnPropertyChanged(nameof(SleepSummary));
         OnPropertyChanged(nameof(PowerPlanName));
+        OnPropertyChanged(nameof(MicrophoneSummary));
     }
 
     public void RefreshPlanName() => OnPropertyChanged(nameof(PowerPlanName));

@@ -1,6 +1,11 @@
 namespace PCModeSwitcher.Models;
 
-public sealed record ApplyStepResult(string Name, bool IsSuccess, string Message, string? TechnicalDetails = null);
+public sealed record ApplyStepResult(
+    string Name,
+    bool IsSuccess,
+    string Message,
+    string? TechnicalDetails = null,
+    bool IsSkipped = false);
 
 public sealed class ModeApplyResult
 {
@@ -11,11 +16,11 @@ public sealed class ModeApplyResult
     {
         var heading = IsSuccess
             ? $"{modeName}モードに切り替えました"
-            : Steps.Any(step => step.IsSuccess)
+            : Steps.Any(step => step.IsSuccess && !step.IsSkipped)
                 ? $"{modeName}モードを一部適用しました"
                 : $"{modeName}モードを適用できませんでした";
         var details = string.Join(Environment.NewLine,
-            Steps.Select(step => $"{(step.IsSuccess ? "✓" : "×")} {step.Name}"));
+            Steps.Select(step => $"{(step.IsSkipped ? "–" : step.IsSuccess ? "✓" : "×")} {step.Name}"));
         return $"{heading}{Environment.NewLine}{Environment.NewLine}{details}";
     }
 }

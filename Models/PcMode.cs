@@ -10,6 +10,7 @@ public sealed class PcMode
     public uint SleepTimeoutAc { get; set; }
     public uint SleepTimeoutBattery { get; set; }
     public Guid PowerPlanId { get; set; }
+    public MicrophoneMuteSetting MicrophoneMute { get; set; } = MicrophoneMuteSetting.NoChange;
 
     public PcMode Copy() => new()
     {
@@ -20,6 +21,7 @@ public sealed class PcMode
         DisplayTimeoutBattery = DisplayTimeoutBattery,
         SleepTimeoutAc = SleepTimeoutAc,
         SleepTimeoutBattery = SleepTimeoutBattery,
-        PowerPlanId = PowerPlanId
+        PowerPlanId = PowerPlanId,
+        MicrophoneMute = MicrophoneMute
     };
 }

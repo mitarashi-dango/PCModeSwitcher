@@ -1,7 +1,7 @@
 <Window x:Class="PCModeSwitcher.Views.ModeEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="モード設定" Width="620" Height="620"
+        Title="モード設定" Width="620" Height="680"
         ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
   <Window.Resources>
@@ -26,6 +26,7 @@
         <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
       <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -56,6 +57,10 @@
       <TextBlock Grid.Row="4" Text="電源モード" VerticalAlignment="Center" Margin="0,8"/>
       <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding PowerPlans}"
                 SelectedItem="{Binding SelectedPowerPlan}" Margin="0,6"/>
+
+      <TextBlock Grid.Row="5" Text="既定のマイク" VerticalAlignment="Center" Margin="0,8"/>
+      <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding MicrophoneChoices}"
+                SelectedItem="{Binding SelectedMicrophoneMute}" Margin="0,6"/>
     </Grid>
 
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">

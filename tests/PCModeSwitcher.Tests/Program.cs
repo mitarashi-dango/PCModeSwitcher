@@ -16,7 +16,9 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("利用可能な電源プランの読み取り", TestPowerPlanEnumerationAsync),
     ("Windows設定からの現在モード自動判定", TestCurrentModeDetectionAsync),
     ("バッテリー有無による表示と適用の切り替え", TestBatteryAwareBehaviorAsync),
-    ("モードの3設定一括適用", TestModeApplyAsync),
+    ("電源3設定の一括適用", TestModeApplyAsync),
+    ("マイクミュート設定の適用と復元", TestMicrophoneMuteAsync),
+    ("モードの4設定一括適用", TestModeMicrophoneIntegrationAsync),
     ("途中失敗時の復元と結果表示", TestPartialFailureRollbackAsync)
 };
 
@@ -60,6 +62,8 @@ static Task TestDefaultModesAsync()
         "Windowsログイン時の自動起動が既定で有効になっています。");
     Assert(settings.Modes[3].Name == "CUSTOM" && settings.Modes[3].Icon == "⚙",
         "CUSTOMの既定表示が正しくありません。");
+    Assert(settings.Modes.All(mode => mode.MicrophoneMute == MicrophoneMuteSetting.NoChange),
+        "マイク設定の既定値が『変更しない』ではありません。");
     Assert(settings.Hotkeys.Count == 4 && settings.Hotkeys.All(hotkey => !hotkey.IsConfigured),
         "ショートカットの既定値が未設定ではありません。");
     return Task.CompletedTask;
@@ -74,6 +78,7 @@ static async Task TestSettingsRoundTripAsync()
         var settings = SettingsService.CreateDefaults();
         settings.LastAppliedModeId = "work";
         settings.Modes[1].DisplayTimeoutAc = 15 * 60;
+        settings.Modes[1].MicrophoneMute = MicrophoneMuteSetting.Mute;
         settings.CloseButtonBehavior = CloseButtonBehavior.ExitApplication;
         settings.ShowTrayNotification = true;
         settings.StartWithWindows = true;
@@ -88,6 +93,8 @@ static async Task TestSettingsRoundTripAsync()
         var loaded = load.Value ?? throw new InvalidOperationException("設定データがありません。");
         Assert(loaded.LastAppliedModeId == "work", "最後に適用したモードが保持されていません。");
         Assert(loaded.Modes[1].DisplayTimeoutAc == 15 * 60, "編集した時間が保持されていません。");
+        Assert(loaded.Modes[1].MicrophoneMute == MicrophoneMuteSetting.Mute,
+            "編集したマイク設定が保持されていません。");
         Assert(loaded.CloseButtonBehavior == CloseButtonBehavior.ExitApplication,
             "閉じるボタンの動作が保持されていません。");
         Assert(loaded.ShowTrayNotification, "通知表示の設定が保持されていません。");
@@ -113,7 +120,20 @@ static async Task TestLegacySettingsMigrationAsync()
         var legacySettings = new
         {
             defaults.Version,
-            Modes = defaults.Modes.Where(mode => mode.Id != "custom").ToList(),
+            Modes = defaults.Modes
+                .Where(mode => mode.Id != "custom")
+                .Select(mode => new
+                {
+                    mode.Id,
+                    mode.Name,
+                    mode.Icon,
+                    mode.DisplayTimeoutAc,
+                    mode.DisplayTimeoutBattery,
+                    mode.SleepTimeoutAc,
+                    mode.SleepTimeoutBattery,
+                    mode.PowerPlanId
+                })
+                .ToList(),
             defaults.LastAppliedModeId,
             defaults.CloseButtonBehavior,
             defaults.ShowTrayNotification
@@ -134,6 +154,8 @@ static async Task TestLegacySettingsMigrationAsync()
             "旧設定へ4モードのショートカット設定が補完されませんでした。");
         Assert(migrated.Hotkeys.All(hotkey => !hotkey.IsConfigured),
             "旧設定の移行時にショートカットが勝手に有効になりました。");
+        Assert(migrated.Modes.All(mode => mode.MicrophoneMute == MicrophoneMuteSetting.NoChange),
+            "旧設定のマイク設定が『変更しない』で補完されませんでした。");
     }
     finally
     {
@@ -186,15 +208,19 @@ static async Task TestAppPreferenceIntegrationAsync()
         var planId = Guid.NewGuid();
         var startup = new FakeStartupService();
         var hotkeyService = new FakeGlobalHotkeyService();
+        var microphoneMuteService = new FakeMicrophoneMuteService();
         var viewModel = new MainViewModel(
             new SettingsService(testDirectory),
             new PowerSettingsService(new FakePowerPolicyAccessor(planId), () => true),
+            microphoneMuteService,
             startup,
             hotkeyService);
         await viewModel.InitializeAsync();
 
         var applyResult = await viewModel.ApplyModeByIdAsync("work");
         Assert(applyResult?.IsSuccess == true, "通知領域用のモード適用に失敗しました。");
+        Assert(applyResult?.Steps.Single(step => step.Name == "マイク").IsSkipped == true,
+            "『変更しない』のマイク設定がスキップ表示になっていません。");
         Assert(viewModel.CurrentModeId == "work" && viewModel.CurrentModeName == "WORK",
             "通知領域用のモード適用後に現在のモードが更新されていません。");
 
@@ -263,6 +289,7 @@ static async Task TestInitialModeDetectionAsync()
         var viewModel = new MainViewModel(
             settingsService,
             new PowerSettingsService(policy, () => true),
+            new FakeMicrophoneMuteService(),
             new FakeStartupService(),
             new FakeGlobalHotkeyService());
         await viewModel.InitializeAsync();
@@ -361,6 +388,68 @@ static async Task TestModeApplyAsync()
         "ACスリープ時間が適用されていません。");
     Assert(policy.GetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Dc) == mode.SleepTimeoutBattery,
         "DCスリープ時間が適用されていません。");
+}
+
+static Task TestMicrophoneMuteAsync()
+{
+    var accessor = new FakeMicrophoneMuteAccessor();
+    var service = new MicrophoneMuteService(accessor);
+
+    var noChange = service.Apply(MicrophoneMuteSetting.NoChange);
+    Assert(noChange.IsSuccess, "『変更しない』が失敗しました。");
+    Assert(accessor.GetCount == 0 && accessor.SetCount == 0,
+        "『変更しない』でマイクへアクセスしました。");
+
+    var mute = service.Apply(MicrophoneMuteSetting.Mute);
+    Assert(mute.IsSuccess && accessor.Muted, "マイクをミュートできませんでした。");
+
+    var unmute = service.Apply(MicrophoneMuteSetting.Unmute);
+    Assert(unmute.IsSuccess && !accessor.Muted, "マイクのミュートを解除できませんでした。");
+
+    accessor.FailNextVerification = true;
+    var failedVerification = service.Apply(MicrophoneMuteSetting.Mute);
+    Assert(!failedVerification.IsSuccess, "反映確認失敗が成功扱いになりました。");
+    Assert(!accessor.Muted, "反映確認失敗後に変更前のミュート状態へ戻っていません。");
+    return Task.CompletedTask;
+}
+
+static async Task TestModeMicrophoneIntegrationAsync()
+{
+    var testDirectory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.Tests.{Guid.NewGuid():N}");
+    try
+    {
+        var planId = Guid.NewGuid();
+        var settingsService = new SettingsService(testDirectory);
+        var settings = SettingsService.CreateDefaults();
+        foreach (var mode in settings.Modes)
+            mode.PowerPlanId = planId;
+        settings.Modes.Single(mode => mode.Id == "game").MicrophoneMute = MicrophoneMuteSetting.Mute;
+        var save = await settingsService.SaveAsync(settings);
+        Assert(save.IsSuccess, "マイク連携テスト用の設定を保存できませんでした。");
+
+        var microphoneMuteService = new FakeMicrophoneMuteService();
+        var viewModel = new MainViewModel(
+            settingsService,
+            new PowerSettingsService(new FakePowerPolicyAccessor(planId), () => true),
+            microphoneMuteService,
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService());
+        await viewModel.InitializeAsync();
+
+        var result = await viewModel.ApplyModeByIdAsync("game")
+            ?? throw new InvalidOperationException("GAMEモードの適用結果がありません。");
+        Assert(result.IsSuccess, "マイクを含むモード適用に失敗しました。");
+        Assert(result.Steps.Count == 4 &&
+               result.Steps.Single(step => step.Name == "マイク") is { IsSuccess: true, IsSkipped: false },
+            "モード適用結果にマイクが含まれていません。");
+        Assert(microphoneMuteService.LastSetting == MicrophoneMuteSetting.Mute,
+            "モードに保存したマイク設定が適用されていません。");
+    }
+    finally
+    {
+        if (Directory.Exists(testDirectory))
+            Directory.Delete(testDirectory, true);
+    }
 }
 
 static async Task TestCurrentModeDetectionAsync()
@@ -539,6 +628,48 @@ sealed class FakeStartupService : IStartupService
     public OperationResult SetEnabled(bool enabled)
     {
         Enabled = enabled;
+        return OperationResult.Success();
+    }
+}
+
+sealed class FakeMicrophoneMuteAccessor : IMicrophoneMuteAccessor
+{
+    public bool Muted { get; private set; }
+    public int GetCount { get; private set; }
+    public int SetCount { get; private set; }
+    public bool FailNextVerification { get; set; }
+    private bool HasSetSinceLastRead { get; set; }
+
+    public OperationResult<bool> GetMuted()
+    {
+        GetCount++;
+        if (FailNextVerification && HasSetSinceLastRead)
+        {
+            FailNextVerification = false;
+            HasSetSinceLastRead = false;
+            return OperationResult<bool>.Failure("テスト用の反映確認失敗です。");
+        }
+
+        HasSetSinceLastRead = false;
+        return OperationResult<bool>.Success(Muted);
+    }
+
+    public OperationResult SetMuted(bool muted)
+    {
+        SetCount++;
+        Muted = muted;
+        HasSetSinceLastRead = true;
+        return OperationResult.Success();
+    }
+}
+
+sealed class FakeMicrophoneMuteService : IMicrophoneMuteService
+{
+    public MicrophoneMuteSetting? LastSetting { get; private set; }
+
+    public OperationResult Apply(MicrophoneMuteSetting setting)
+    {
+        LastSetting = setting;
         return OperationResult.Success();
     }
 }
