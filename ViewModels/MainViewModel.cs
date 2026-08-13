@@ -8,7 +8,7 @@ namespace PCModeSwitcher.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
 {
-    public const string CustomModeId = "custom";
+    public const string CustomModeId = "custom1";
     public const string UnregisteredModeId = "unregistered";
 
     private readonly SettingsService _settingsService;
@@ -24,6 +24,7 @@ public sealed class MainViewModel : ObservableObject
     private string _statusMessage = "モードを選ぶと、4つの設定をまとめて切り替えます。";
 
     public ObservableCollection<ModeCardViewModel> Modes { get; } = [];
+    public ObservableCollection<ModeCardViewModel> VisibleModes { get; } = [];
     public ObservableCollection<PowerPlan> PowerPlans { get; } = [];
     public bool IsBusy
     {
@@ -38,15 +39,28 @@ public sealed class MainViewModel : ObservableObject
         }
     }
     public bool IsInteractionEnabled => !IsBusy;
-    public string? CurrentModeId { get => _currentModeId; private set => SetProperty(ref _currentModeId, value); }
+    public string? CurrentModeId
+    {
+        get => _currentModeId;
+        private set
+        {
+            if (!SetProperty(ref _currentModeId, value))
+                return;
+            OnPropertyChanged(nameof(CurrentModeHasCustomIcon));
+            OnPropertyChanged(nameof(CurrentModeCustomIconSource));
+        }
+    }
     public string CurrentModeName { get => _currentModeName; private set => SetProperty(ref _currentModeName, value); }
     public string CurrentModeIcon { get => _currentModeIcon; private set => SetProperty(ref _currentModeIcon, value); }
+    public bool CurrentModeHasCustomIcon => ModeIconAssets.HasCustomIcon(CurrentModeId);
+    public string? CurrentModeCustomIconSource => ModeIconAssets.GetCustomIconSource(CurrentModeId);
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
     public CloseButtonBehavior CloseButtonBehavior => _settings.CloseButtonBehavior;
     public bool ShowTrayNotification => _settings.ShowTrayNotification;
     public bool StartWithWindows => _settings.StartWithWindows;
     public string AppVersion { get; } = GetAppVersion();
     public IReadOnlyList<ModeHotkey> Hotkeys => _settings.Hotkeys.Select(hotkey => hotkey.Copy()).ToList();
+    public IReadOnlyList<string> VisibleModeIds => [.. _settings.VisibleModeIds];
     public AsyncRelayCommand ApplyModeCommand { get; }
     public AsyncRelayCommand EditModeCommand { get; }
 
@@ -85,6 +99,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(ShowTrayNotification));
             OnPropertyChanged(nameof(StartWithWindows));
             OnPropertyChanged(nameof(Hotkeys));
+            OnPropertyChanged(nameof(VisibleModeIds));
 
             var startupResult = _startupService.SetEnabled(_settings.StartWithWindows);
             if (!startupResult.IsSuccess)
@@ -113,6 +128,7 @@ public sealed class MainViewModel : ObservableObject
             var hasBattery = _powerService.HasBattery;
             foreach (var mode in _settings.Modes)
                 Modes.Add(new ModeCardViewModel(mode, GetPowerPlanName, hasBattery));
+            RebuildVisibleModes();
             var detection = await RefreshCurrentModeCoreAsync();
             if (!detection.IsSuccess)
                 AppendStatusWarning(detection.UserMessage);
@@ -127,7 +143,8 @@ public sealed class MainViewModel : ObservableObject
         CloseButtonBehavior behavior,
         bool showTrayNotification,
         bool startWithWindows,
-        IReadOnlyCollection<ModeHotkey> hotkeys)
+        IReadOnlyCollection<ModeHotkey> hotkeys,
+        IReadOnlyCollection<string>? visibleModeIds = null)
     {
         if (!Enum.IsDefined(behavior))
             return OperationResult.Failure("閉じるボタンの動作が正しくありません。");
@@ -139,10 +156,27 @@ public sealed class MainViewModel : ObservableObject
             return validation;
         }
 
+        var newVisibleModeIds = visibleModeIds is null
+            ? [.. _settings.VisibleModeIds]
+            : visibleModeIds.ToList();
+        if (newVisibleModeIds.Count is < 1 or > SettingsService.MaximumVisibleModeCount ||
+            newVisibleModeIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != newVisibleModeIds.Count ||
+            newVisibleModeIds.Any(modeId => !SettingsService.SupportedModeIds.Contains(
+                modeId, StringComparer.OrdinalIgnoreCase)))
+        {
+            return OperationResult.Failure("アプリ画面に表示するモードは1〜5個で選んでください。");
+        }
+
+        newVisibleModeIds = newVisibleModeIds
+            .Select(modeId => SettingsService.SupportedModeIds.First(supportedModeId =>
+                string.Equals(supportedModeId, modeId, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
         var previousBehavior = _settings.CloseButtonBehavior;
         var previousShowTrayNotification = _settings.ShowTrayNotification;
         var previousStartWithWindows = _settings.StartWithWindows;
         var previousHotkeys = _settings.Hotkeys.Select(hotkey => hotkey.Copy()).ToList();
+        var previousVisibleModeIds = _settings.VisibleModeIds.ToList();
 
         var startupResult = _startupService.SetEnabled(startWithWindows);
         if (!startupResult.IsSuccess)
@@ -165,6 +199,8 @@ public sealed class MainViewModel : ObservableObject
         _settings.ShowTrayNotification = showTrayNotification;
         _settings.StartWithWindows = startWithWindows;
         _settings.Hotkeys = newHotkeys;
+        _settings.VisibleModeIds = newVisibleModeIds;
+        RebuildVisibleModes();
         NotifyAppPreferencesChanged();
 
         var result = await _settingsService.SaveAsync(_settings);
@@ -174,6 +210,8 @@ public sealed class MainViewModel : ObservableObject
             _settings.ShowTrayNotification = previousShowTrayNotification;
             _settings.StartWithWindows = previousStartWithWindows;
             _settings.Hotkeys = previousHotkeys;
+            _settings.VisibleModeIds = previousVisibleModeIds;
+            RebuildVisibleModes();
             NotifyAppPreferencesChanged();
 
             var startupRollback = _startupService.SetEnabled(previousStartWithWindows);
@@ -371,6 +409,19 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowTrayNotification));
         OnPropertyChanged(nameof(StartWithWindows));
         OnPropertyChanged(nameof(Hotkeys));
+        OnPropertyChanged(nameof(VisibleModeIds));
+    }
+
+    private void RebuildVisibleModes()
+    {
+        VisibleModes.Clear();
+        foreach (var modeId in _settings.VisibleModeIds)
+        {
+            var mode = Modes.FirstOrDefault(card =>
+                string.Equals(card.Mode.Id, modeId, StringComparison.OrdinalIgnoreCase));
+            if (mode is not null)
+                VisibleModes.Add(mode);
+        }
     }
 
     private void AppendStatusWarning(string message)

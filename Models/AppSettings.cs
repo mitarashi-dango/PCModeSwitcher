@@ -9,4 +9,5 @@ public sealed class AppSettings
     public bool ShowTrayNotification { get; set; }
     public bool StartWithWindows { get; set; }
     public List<ModeHotkey> Hotkeys { get; set; } = [];
+    public List<string> VisibleModeIds { get; set; } = [];
 }

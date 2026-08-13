@@ -69,6 +69,8 @@ public partial class MainWindow : Window
             viewModel.ShowTrayNotification,
             viewModel.StartWithWindows,
             viewModel.Hotkeys,
+            viewModel.Modes.Select(mode => mode.Mode).ToList(),
+            viewModel.VisibleModeIds,
             this);
         if (settingsWindow.ShowDialog() != true)
         {
@@ -79,7 +81,8 @@ public partial class MainWindow : Window
             settingsWindow.SelectedBehavior,
             settingsWindow.ShowTrayNotification,
             settingsWindow.StartWithWindows,
-            settingsWindow.Hotkeys);
+            settingsWindow.Hotkeys,
+            settingsWindow.SelectedVisibleModeIds);
         if (!result.IsSuccess)
         {
             MessageBox.Show(

@@ -19,6 +19,8 @@ public sealed class ModeCardViewModel : ObservableObject
     public bool HasBattery => _hasBattery;
     public string Name => _mode.Name;
     public string Icon => _mode.Icon;
+    public bool HasCustomIcon => ModeIconAssets.HasCustomIcon(_mode.Id);
+    public string? CustomIconSource => ModeIconAssets.GetCustomIconSource(_mode.Id);
     public string DisplaySummary =>
         FormatSummary(_mode.DisplayTimeoutAc, _mode.DisplayTimeoutBattery);
     public string SleepSummary =>
@@ -38,6 +40,8 @@ public sealed class ModeCardViewModel : ObservableObject
         OnPropertyChanged(nameof(Mode));
         OnPropertyChanged(nameof(Name));
         OnPropertyChanged(nameof(Icon));
+        OnPropertyChanged(nameof(HasCustomIcon));
+        OnPropertyChanged(nameof(CustomIconSource));
         OnPropertyChanged(nameof(DisplaySummary));
         OnPropertyChanged(nameof(SleepSummary));
         OnPropertyChanged(nameof(PowerPlanName));

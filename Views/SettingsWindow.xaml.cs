@@ -1,25 +1,34 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.Services;
+using PCModeSwitcher.ViewModels;
 
 namespace PCModeSwitcher.Views;
 
 public partial class SettingsWindow : Window
 {
     private readonly Dictionary<string, ModeHotkey> _hotkeys;
+    private bool _isRevertingVisibleSelection;
 
     public CloseButtonBehavior SelectedBehavior { get; private set; }
     public bool ShowTrayNotification { get; private set; }
     public bool StartWithWindows { get; private set; }
-    public IReadOnlyList<ModeHotkey> Hotkeys => _hotkeys.Values.Select(hotkey => hotkey.Copy()).ToList();
+    public ObservableCollection<ModeSettingsItem> ModeItems { get; } = [];
+    public IReadOnlyList<ModeHotkey> Hotkeys =>
+        ModeItems.Select(item => _hotkeys[item.Id].Copy()).ToList();
+    public IReadOnlyList<string> SelectedVisibleModeIds =>
+        ModeItems.Where(item => item.IsVisible).Select(item => item.Id).ToList();
 
     public SettingsWindow(
         CloseButtonBehavior currentBehavior,
         bool showTrayNotification,
         bool startWithWindows,
         IReadOnlyCollection<ModeHotkey> hotkeys,
+        IReadOnlyCollection<PcMode> modes,
+        IReadOnlyCollection<string> visibleModeIds,
         Window owner)
     {
         InitializeComponent();
@@ -37,11 +46,52 @@ public partial class SettingsWindow : Window
             }
         }
 
+        foreach (var modeId in SettingsService.SupportedModeIds)
+        {
+            var mode = modes.First(value =>
+                string.Equals(value.Id, modeId, StringComparison.OrdinalIgnoreCase));
+            ModeItems.Add(new ModeSettingsItem(
+                mode.Id,
+                mode.Name,
+                mode.Icon,
+                visibleModeIds.Contains(mode.Id, StringComparer.OrdinalIgnoreCase),
+                HotkeyValidator.Format(_hotkeys[mode.Id])));
+        }
+
         MinimizeToTrayOption.IsChecked = currentBehavior == CloseButtonBehavior.MinimizeToTray;
         ExitApplicationOption.IsChecked = currentBehavior == CloseButtonBehavior.ExitApplication;
         ShowTrayNotificationOption.IsChecked = showTrayNotification;
         StartWithWindowsOption.IsChecked = startWithWindows;
         UpdateHotkeyTextBoxes();
+    }
+
+    private void VisibleModeCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isRevertingVisibleSelection ||
+            sender is not CheckBox { DataContext: ModeSettingsItem item } checkBox)
+        {
+            return;
+        }
+
+        item.IsVisible = checkBox.IsChecked == true;
+        var selectedCount = ModeItems.Count(mode => mode.IsVisible);
+        if (selectedCount > SettingsService.MaximumVisibleModeCount)
+        {
+            _isRevertingVisibleSelection = true;
+            item.IsVisible = false;
+            checkBox.IsChecked = false;
+            _isRevertingVisibleSelection = false;
+            ShowModeSelectionValidation("アプリ画面に表示できるモードは最大5個です。");
+            return;
+        }
+
+        if (selectedCount == 0)
+        {
+            ShowModeSelectionValidation("表示するモードを1個以上選んでください。");
+            return;
+        }
+
+        HideModeSelectionValidation();
     }
 
     private void HotkeyTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -108,6 +158,12 @@ public partial class SettingsWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        if (SelectedVisibleModeIds.Count is < 1 or > SettingsService.MaximumVisibleModeCount)
+        {
+            ShowModeSelectionValidation("アプリ画面に表示するモードは1〜5個で選んでください。");
+            return;
+        }
+
         var validation = HotkeyValidator.Validate(_hotkeys.Values.ToList());
         if (!validation.IsSuccess)
         {
@@ -125,10 +181,20 @@ public partial class SettingsWindow : Window
 
     private void UpdateHotkeyTextBoxes()
     {
-        GameHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["game"]);
-        WorkHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["work"]);
-        NormalHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["normal"]);
-        CustomHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["custom"]);
+        foreach (var item in ModeItems)
+            item.HotkeyText = HotkeyValidator.Format(_hotkeys[item.Id]);
+    }
+
+    private void ShowModeSelectionValidation(string message)
+    {
+        ModeSelectionValidationMessage.Text = message;
+        ModeSelectionValidationMessage.Visibility = Visibility.Visible;
+    }
+
+    private void HideModeSelectionValidation()
+    {
+        ModeSelectionValidationMessage.Text = "";
+        ModeSelectionValidationMessage.Visibility = Visibility.Collapsed;
     }
 
     private void ShowShortcutValidation(string message)
@@ -162,4 +228,40 @@ public partial class SettingsWindow : Window
         Key.LeftAlt or Key.RightAlt or
         Key.LeftShift or Key.RightShift or
         Key.LWin or Key.RWin;
+}
+
+public sealed class ModeSettingsItem : ObservableObject
+{
+    private bool _isVisible;
+    private string _hotkeyText;
+
+    public ModeSettingsItem(
+        string id,
+        string name,
+        string icon,
+        bool isVisible,
+        string hotkeyText)
+    {
+        Id = id;
+        Name = name;
+        Icon = icon;
+        _isVisible = isVisible;
+        _hotkeyText = hotkeyText;
+    }
+
+    public string Id { get; }
+    public string Name { get; }
+    public string Icon { get; }
+    public bool HasCustomIcon => ModeIconAssets.HasCustomIcon(Id);
+    public string? CustomIconSource => ModeIconAssets.GetCustomIconSource(Id);
+    public bool IsVisible
+    {
+        get => _isVisible;
+        set => SetProperty(ref _isVisible, value);
+    }
+    public string HotkeyText
+    {
+        get => _hotkeyText;
+        set => SetProperty(ref _hotkeyText, value);
+    }
 }

@@ -13,7 +13,7 @@
     <AssemblyName>PCModeSwitcher</AssemblyName>
     <RootNamespace>PCModeSwitcher</RootNamespace>
     <Product>PC Mode Switcher</Product>
-    <Description>Windows 11の電源設定とマイクミュートをGAME / WORK / NORMAL / CUSTOMの4モードで切り替えるアプリ</Description>
+    <Description>Windows 11の電源設定とマイクミュートをGAME / WORK / NORMAL / CUSTOM1〜6で切り替えるアプリ</Description>
     <Authors>mitarashi-dango</Authors>
     <RepositoryUrl>https://github.com/mitarashi-dango/PCModeSwitcher</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -29,5 +29,8 @@
     <Page Remove="tests\**\*.xaml" />
     <Resource Include="Assets\AppIcon.ico" />
     <Resource Include="Assets\GameModeIcon.png" />
+    <Resource Include="Assets\FluentEmojiHighContrast\*.png" />
+    <Content Include="Assets\FluentEmojiHighContrast\THIRD-PARTY-NOTICE.txt"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

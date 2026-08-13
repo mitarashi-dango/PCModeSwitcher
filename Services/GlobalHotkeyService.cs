@@ -13,7 +13,12 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService, IDisposable
     private const int GameHotkeyId = 0x5101;
     private const int WorkHotkeyId = 0x5102;
     private const int NormalHotkeyId = 0x5103;
-    private const int CustomHotkeyId = 0x5104;
+    private const int Custom1HotkeyId = 0x5104;
+    private const int Custom2HotkeyId = 0x5105;
+    private const int Custom3HotkeyId = 0x5106;
+    private const int Custom4HotkeyId = 0x5107;
+    private const int Custom5HotkeyId = 0x5108;
+    private const int Custom6HotkeyId = 0x5109;
 
     private readonly Dictionary<int, ModeHotkey> _registrations = [];
     private Window? _window;
@@ -163,7 +168,12 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService, IDisposable
         "game" => GameHotkeyId,
         "work" => WorkHotkeyId,
         "normal" => NormalHotkeyId,
-        "custom" => CustomHotkeyId,
+        "custom1" => Custom1HotkeyId,
+        "custom2" => Custom2HotkeyId,
+        "custom3" => Custom3HotkeyId,
+        "custom4" => Custom4HotkeyId,
+        "custom5" => Custom5HotkeyId,
+        "custom6" => Custom6HotkeyId,
         _ => throw new ArgumentOutOfRangeException(nameof(modeId), modeId, "未対応のモードです。")
     };
 

@@ -11,7 +11,8 @@ public static class HotkeyValidator
         HotkeyModifiers.Shift |
         HotkeyModifiers.Windows;
 
-    private static readonly string[] ModeIds = ["game", "work", "normal", "custom"];
+    private static readonly string[] ModeIds =
+        ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"];
 
     public static OperationResult Validate(IReadOnlyCollection<ModeHotkey> hotkeys)
     {
@@ -82,7 +83,12 @@ public static class HotkeyValidator
         "game" => "GAME",
         "work" => "WORK",
         "normal" => "NORMAL",
-        "custom" => "CUSTOM",
+        "custom1" => "CUSTOM1",
+        "custom2" => "CUSTOM2",
+        "custom3" => "CUSTOM3",
+        "custom4" => "CUSTOM4",
+        "custom5" => "CUSTOM5",
+        "custom6" => "CUSTOM6",
         _ => modeId
     };
 

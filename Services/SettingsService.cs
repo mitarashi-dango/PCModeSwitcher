@@ -6,7 +6,15 @@ namespace PCModeSwitcher.Services;
 
 public sealed class SettingsService
 {
-    private static readonly string[] RequiredModeIds = ["game", "work", "normal", "custom"];
+    public const int MaximumVisibleModeCount = 5;
+
+    private const string LegacyCustomModeId = "custom";
+    private static readonly string[] RequiredModeIds =
+        ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"];
+    private static readonly string[] DefaultVisibleModeIds =
+        ["game", "work", "normal", "custom1", "custom2"];
+
+    public static IReadOnlyList<string> SupportedModeIds => RequiredModeIds;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -95,7 +103,8 @@ public sealed class SettingsService
     public static AppSettings CreateDefaults() => new()
     {
         Modes = CreateDefaultModes(),
-        Hotkeys = CreateDefaultHotkeys()
+        Hotkeys = CreateDefaultHotkeys(),
+        VisibleModeIds = [.. DefaultVisibleModeIds]
     };
 
     private static List<PcMode> CreateDefaultModes() =>
@@ -124,28 +133,44 @@ public sealed class SettingsService
                 PowerPlanId = PowerSettingsService.BalancedSchemeId,
                 MicrophoneMute = MicrophoneMuteSetting.NoChange
             },
-            new PcMode
-            {
-                Id = "custom", Name = "CUSTOM", Icon = "⚙",
-                DisplayTimeoutAc = 15 * 60, DisplayTimeoutBattery = 15 * 60,
-                SleepTimeoutAc = 60 * 60, SleepTimeoutBattery = 60 * 60,
-                PowerPlanId = PowerSettingsService.BalancedSchemeId,
-                MicrophoneMute = MicrophoneMuteSetting.NoChange
-            }
+            CreateCustomMode(1, "\U0001F42D\uFE0E"),
+            CreateCustomMode(2, "\U0001F42E\uFE0E"),
+            CreateCustomMode(3, "\U0001F42F\uFE0E"),
+            CreateCustomMode(4, "\U0001F430\uFE0E"),
+            CreateCustomMode(5, "\U0001F432\uFE0E"),
+            CreateCustomMode(6, "\U0001F40D\uFE0E")
         ];
+
+    private static PcMode CreateCustomMode(int number, string icon) => new()
+    {
+        Id = $"custom{number}", Name = $"CUSTOM{number}", Icon = icon,
+        DisplayTimeoutAc = 15 * 60, DisplayTimeoutBattery = 15 * 60,
+        SleepTimeoutAc = 60 * 60, SleepTimeoutBattery = 60 * 60,
+        PowerPlanId = PowerSettingsService.BalancedSchemeId,
+        MicrophoneMute = MicrophoneMuteSetting.NoChange
+    };
 
     public static List<ModeHotkey> CreateDefaultHotkeys() =>
     [
         new() { ModeId = "game" },
         new() { ModeId = "work" },
         new() { ModeId = "normal" },
-        new() { ModeId = "custom" }
+        new() { ModeId = "custom1" },
+        new() { ModeId = "custom2" },
+        new() { ModeId = "custom3" },
+        new() { ModeId = "custom4" },
+        new() { ModeId = "custom5" },
+        new() { ModeId = "custom6" }
     ];
 
     private static void Normalize(AppSettings settings)
     {
         settings.Modes ??= [];
         settings.Hotkeys ??= [];
+        settings.VisibleModeIds ??= [];
+
+        MigrateLegacyCustomMode(settings);
+
         foreach (var defaultMode in CreateDefaultModes())
         {
             if (!settings.Modes.Any(mode =>
@@ -163,12 +188,86 @@ public sealed class SettingsService
                 settings.Hotkeys.Add(defaultHotkey);
             }
         }
+
+        // 名前とアイコンは固定。保存済みの各モード設定値はそのまま引き継ぐ。
+        foreach (var defaultMode in CreateDefaultModes())
+        {
+            var mode = settings.Modes.First(value =>
+                string.Equals(value.Id, defaultMode.Id, StringComparison.OrdinalIgnoreCase));
+            mode.Id = defaultMode.Id;
+            mode.Name = defaultMode.Name;
+            mode.Icon = defaultMode.Icon;
+        }
+
+        settings.Modes = RequiredModeIds
+            .Select(modeId => settings.Modes.First(mode =>
+                string.Equals(mode.Id, modeId, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        settings.Hotkeys = RequiredModeIds
+            .Select(modeId => settings.Hotkeys.First(hotkey =>
+                string.Equals(hotkey.ModeId, modeId, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        settings.VisibleModeIds = NormalizeVisibleModeIds(settings.VisibleModeIds);
+    }
+
+    private static void MigrateLegacyCustomMode(AppSettings settings)
+    {
+        var legacyMode = settings.Modes.FirstOrDefault(mode =>
+            string.Equals(mode.Id, LegacyCustomModeId, StringComparison.OrdinalIgnoreCase));
+        var custom1Exists = settings.Modes.Any(mode =>
+            string.Equals(mode.Id, "custom1", StringComparison.OrdinalIgnoreCase));
+        if (legacyMode is not null)
+        {
+            if (custom1Exists)
+                settings.Modes.Remove(legacyMode);
+            else
+                legacyMode.Id = "custom1";
+        }
+
+        var legacyHotkey = settings.Hotkeys.FirstOrDefault(hotkey =>
+            string.Equals(hotkey.ModeId, LegacyCustomModeId, StringComparison.OrdinalIgnoreCase));
+        var custom1HotkeyExists = settings.Hotkeys.Any(hotkey =>
+            string.Equals(hotkey.ModeId, "custom1", StringComparison.OrdinalIgnoreCase));
+        if (legacyHotkey is not null)
+        {
+            if (custom1HotkeyExists)
+                settings.Hotkeys.Remove(legacyHotkey);
+            else
+                legacyHotkey.ModeId = "custom1";
+        }
+
+        if (string.Equals(settings.LastAppliedModeId, LegacyCustomModeId, StringComparison.OrdinalIgnoreCase))
+            settings.LastAppliedModeId = "custom1";
+
+        for (var index = 0; index < settings.VisibleModeIds.Count; index++)
+        {
+            if (string.Equals(settings.VisibleModeIds[index], LegacyCustomModeId, StringComparison.OrdinalIgnoreCase))
+                settings.VisibleModeIds[index] = "custom1";
+        }
+    }
+
+    private static List<string> NormalizeVisibleModeIds(IEnumerable<string> modeIds)
+    {
+        var normalized = modeIds
+            .Where(modeId => RequiredModeIds.Contains(modeId, StringComparer.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaximumVisibleModeCount)
+            .Select(modeId => RequiredModeIds.First(requiredModeId =>
+                string.Equals(requiredModeId, modeId, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        return normalized.Count > 0 ? normalized : [.. DefaultVisibleModeIds];
     }
 
     private static bool IsValid(AppSettings settings) =>
         settings.Version == 1 &&
         Enum.IsDefined(settings.CloseButtonBehavior) &&
         HotkeyValidator.Validate(settings.Hotkeys).IsSuccess &&
+        settings.VisibleModeIds.Count is > 0 and <= MaximumVisibleModeCount &&
+        settings.VisibleModeIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() ==
+            settings.VisibleModeIds.Count &&
+        settings.VisibleModeIds.All(modeId =>
+            RequiredModeIds.Contains(modeId, StringComparer.OrdinalIgnoreCase)) &&
         settings.Modes.Count == RequiredModeIds.Length &&
         settings.Modes.Select(mode => mode.Id)
             .Distinct(StringComparer.OrdinalIgnoreCase).Count() == RequiredModeIds.Length &&

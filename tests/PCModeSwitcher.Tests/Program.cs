@@ -5,7 +5,7 @@ using System.Text.Json;
 
 var tests = new List<(string Name, Func<Task> Run)>
 {
-    ("既定の4モード", TestDefaultModesAsync),
+    ("既定の9モードと5モード表示", TestDefaultModesAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
     ("スタートアップ起動引数の判定", TestStartupLaunchArgumentAsync),
@@ -49,8 +49,9 @@ return 0;
 static Task TestDefaultModesAsync()
 {
     var settings = SettingsService.CreateDefaults();
-    Assert(settings.Modes.Count == 4, "モード数が4ではありません。");
-    Assert(settings.Modes.Select(mode => mode.Id).SequenceEqual(["game", "work", "normal", "custom"]),
+    Assert(settings.Modes.Count == 9, "モード数が9ではありません。");
+    Assert(settings.Modes.Select(mode => mode.Id).SequenceEqual(
+            ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"]),
         "既定モードの並びが正しくありません。");
     Assert(settings.Modes[0].DisplayTimeoutAc == 0 && settings.Modes[0].SleepTimeoutAc == 0,
         "GAMEの既定タイムアウトが正しくありません。");
@@ -60,12 +61,19 @@ static Task TestDefaultModesAsync()
         "通知領域への格納通知が既定で有効になっています。");
     Assert(!settings.StartWithWindows,
         "Windowsログイン時の自動起動が既定で有効になっています。");
-    Assert(settings.Modes[3].Name == "CUSTOM" && settings.Modes[3].Icon == "⚙",
-        "CUSTOMの既定表示が正しくありません。");
+    Assert(settings.Modes.Skip(3).Select(mode => mode.Name)
+            .SequenceEqual(["CUSTOM1", "CUSTOM2", "CUSTOM3", "CUSTOM4", "CUSTOM5", "CUSTOM6"]),
+        "CUSTOM1〜6の既定名が正しくありません。");
+    Assert(settings.Modes.Take(3).Select(mode => mode.Icon).SequenceEqual(["🎮", "💼", "🖥"]),
+        "GAME・WORK・NORMALの既定アイコンが変わっています。");
+    Assert(settings.Modes.Skip(3).All(mode => mode.Icon.EndsWith('\uFE0E')),
+        "CUSTOM1〜6のアイコンがモノクロの文字表示指定になっていません。");
     Assert(settings.Modes.All(mode => mode.MicrophoneMute == MicrophoneMuteSetting.NoChange),
         "マイク設定の既定値が『変更しない』ではありません。");
-    Assert(settings.Hotkeys.Count == 4 && settings.Hotkeys.All(hotkey => !hotkey.IsConfigured),
+    Assert(settings.Hotkeys.Count == 9 && settings.Hotkeys.All(hotkey => !hotkey.IsConfigured),
         "ショートカットの既定値が未設定ではありません。");
+    Assert(settings.VisibleModeIds.SequenceEqual(["game", "work", "normal", "custom1", "custom2"]),
+        "初期表示モードが5個ではありません。");
     return Task.CompletedTask;
 }
 
@@ -84,6 +92,7 @@ static async Task TestSettingsRoundTripAsync()
         settings.StartWithWindows = true;
         settings.Hotkeys[0].Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt;
         settings.Hotkeys[0].VirtualKey = 0x47;
+        settings.VisibleModeIds = ["game", "custom1", "custom3", "custom5"];
 
         var save = await service.SaveAsync(settings);
         Assert(save.IsSuccess, $"保存に失敗しました: {save.UserMessage}");
@@ -102,6 +111,8 @@ static async Task TestSettingsRoundTripAsync()
         Assert(loaded.Hotkeys[0].Modifiers == (HotkeyModifiers.Control | HotkeyModifiers.Alt) &&
                loaded.Hotkeys[0].VirtualKey == 0x47,
             "GAMEショートカットが保持されていません。");
+        Assert(loaded.VisibleModeIds.SequenceEqual(["game", "custom1", "custom3", "custom5"]),
+            "表示モードの選択が保持されていません。");
     }
     finally
     {
@@ -117,26 +128,25 @@ static async Task TestLegacySettingsMigrationAsync()
     {
         Directory.CreateDirectory(testDirectory);
         var defaults = SettingsService.CreateDefaults();
+        var legacyCustom = defaults.Modes.Single(mode => mode.Id == "custom1").Copy();
+        legacyCustom.Id = "custom";
+        legacyCustom.Name = "CUSTOM";
+        legacyCustom.Icon = "⚙";
+        legacyCustom.DisplayTimeoutAc = 123;
+        var legacyCustomHotkey = new ModeHotkey
+        {
+            ModeId = "custom",
+            Modifiers = HotkeyModifiers.Control,
+            VirtualKey = 0x31
+        };
         var legacySettings = new
         {
             defaults.Version,
-            Modes = defaults.Modes
-                .Where(mode => mode.Id != "custom")
-                .Select(mode => new
-                {
-                    mode.Id,
-                    mode.Name,
-                    mode.Icon,
-                    mode.DisplayTimeoutAc,
-                    mode.DisplayTimeoutBattery,
-                    mode.SleepTimeoutAc,
-                    mode.SleepTimeoutBattery,
-                    mode.PowerPlanId
-                })
-                .ToList(),
-            defaults.LastAppliedModeId,
+            Modes = defaults.Modes.Take(3).Select(mode => mode.Copy()).Append(legacyCustom).ToList(),
+            LastAppliedModeId = "custom",
             defaults.CloseButtonBehavior,
-            defaults.ShowTrayNotification
+            defaults.ShowTrayNotification,
+            Hotkeys = defaults.Hotkeys.Take(3).Select(hotkey => hotkey.Copy()).Append(legacyCustomHotkey).ToList()
         };
         await File.WriteAllTextAsync(
             Path.Combine(testDirectory, "settings.json"),
@@ -146,14 +156,20 @@ static async Task TestLegacySettingsMigrationAsync()
         Assert(load.IsSuccess && load.Value is not null, "旧設定ファイルを読み込めませんでした。");
         var migrated = load.Value ?? throw new InvalidOperationException("移行後の設定データがありません。");
         Assert(!migrated.StartWithWindows, "移行後の自動起動設定が既定値ではありません。");
-        Assert(migrated.Modes.Select(mode => mode.Id)
-                .SequenceEqual(["game", "work", "normal", "custom"]),
-            "旧設定へCUSTOMモードが補完されませんでした。");
+        Assert(migrated.Modes.Select(mode => mode.Id).SequenceEqual(
+                ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"]),
+            "旧設定をCUSTOM1〜6へ移行できませんでした。");
+        Assert(migrated.Modes.Single(mode => mode.Id == "custom1").DisplayTimeoutAc == 123,
+            "旧CUSTOMの設定値がCUSTOM1へ引き継がれませんでした。");
+        Assert(migrated.LastAppliedModeId == "custom1",
+            "最後に適用した旧CUSTOMがCUSTOM1へ移行されませんでした。");
         Assert(migrated.Hotkeys.Select(hotkey => hotkey.ModeId)
-                .SequenceEqual(["game", "work", "normal", "custom"]),
-            "旧設定へ4モードのショートカット設定が補完されませんでした。");
-        Assert(migrated.Hotkeys.All(hotkey => !hotkey.IsConfigured),
-            "旧設定の移行時にショートカットが勝手に有効になりました。");
+                .SequenceEqual(["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"]),
+            "旧設定を9モードのショートカット設定へ移行できませんでした。");
+        Assert(migrated.Hotkeys.Single(hotkey => hotkey.ModeId == "custom1").IsConfigured,
+            "旧CUSTOMのショートカットがCUSTOM1へ引き継がれませんでした。");
+        Assert(migrated.VisibleModeIds.SequenceEqual(["game", "work", "normal", "custom1", "custom2"]),
+            "旧設定の初期表示が5モードで補完されませんでした。");
         Assert(migrated.Modes.All(mode => mode.MicrophoneMute == MicrophoneMuteSetting.NoChange),
             "旧設定のマイク設定が『変更しない』で補完されませんでした。");
     }
@@ -216,6 +232,8 @@ static async Task TestAppPreferenceIntegrationAsync()
             startup,
             hotkeyService);
         await viewModel.InitializeAsync();
+        Assert(viewModel.VisibleModes.Count == SettingsService.MaximumVisibleModeCount,
+            "起動時の表示モード数が5個ではありません。");
 
         var applyResult = await viewModel.ApplyModeByIdAsync("work");
         Assert(applyResult?.IsSuccess == true, "通知領域用のモード適用に失敗しました。");
@@ -227,8 +245,8 @@ static async Task TestAppPreferenceIntegrationAsync()
         var customApplyResult = await viewModel.ApplyModeByIdAsync(MainViewModel.CustomModeId);
         Assert(customApplyResult?.IsSuccess == true, "CUSTOMモードの適用に失敗しました。");
         Assert(viewModel.CurrentModeId == MainViewModel.CustomModeId &&
-               viewModel.CurrentModeName == "CUSTOM",
-            "CUSTOMモード適用後に現在のモードが更新されていません。");
+               viewModel.CurrentModeName == "CUSTOM1",
+            "CUSTOM1モード適用後に現在のモードが更新されていません。");
 
         var hotkeys = SettingsService.CreateDefaultHotkeys();
         hotkeys[0].Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt;
@@ -237,15 +255,34 @@ static async Task TestAppPreferenceIntegrationAsync()
             CloseButtonBehavior.MinimizeToTray,
             false,
             true,
-            hotkeys);
+            hotkeys,
+            ["game", "normal", "custom2", "custom4", "custom6"]);
         Assert(save.IsSuccess, $"アプリ設定を保存できませんでした: {save.UserMessage}");
         Assert(startup.Enabled, "スタートアップ登録が有効になっていません。");
         Assert(hotkeyService.Bindings.Single(hotkey => hotkey.ModeId == "game").IsConfigured,
             "グローバルショートカットが登録されていません。");
+        Assert(viewModel.VisibleModes.Select(mode => mode.Mode.Id)
+                .SequenceEqual(["game", "normal", "custom2", "custom4", "custom6"]),
+            "表示モードの選択が画面へ反映されていません。");
+
+        var tooManyVisibleModes = await viewModel.SetAppPreferencesAsync(
+            CloseButtonBehavior.MinimizeToTray,
+            false,
+            true,
+            hotkeys,
+            ["game", "work", "normal", "custom1", "custom2", "custom3"]);
+        Assert(!tooManyVisibleModes.IsSuccess,
+            "6個のモードをアプリ画面へ表示できてしまいました。");
+        Assert(viewModel.VisibleModes.Select(mode => mode.Mode.Id)
+                .SequenceEqual(["game", "normal", "custom2", "custom4", "custom6"]),
+            "不正な表示モード設定で保存済みの選択が変わりました。");
 
         var loaded = await new SettingsService(testDirectory).LoadAsync();
         Assert(loaded.IsSuccess && loaded.Value?.StartWithWindows == true,
             "連携したアプリ設定がファイルへ保存されていません。");
+        Assert(loaded.Value?.VisibleModeIds.SequenceEqual(
+                ["game", "normal", "custom2", "custom4", "custom6"]) == true,
+            "連携した表示モード設定がファイルへ保存されていません。");
 
         hotkeyService.NextResult = OperationResult.Failure("テスト用の登録失敗です。");
         var failedSave = await viewModel.SetAppPreferencesAsync(
