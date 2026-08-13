@@ -159,7 +159,8 @@
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <TextBlock Text="{Binding StatusMessage}" FontSize="14" VerticalAlignment="Center"/>
+        <TextBlock Text="{Binding StatusMessage}" FontSize="14" VerticalAlignment="Center"
+                   TextWrapping="Wrap"/>
         <TextBlock Grid.Column="1" Text="{Binding AppVersion}" FontSize="12"
                    Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="24,0,0,0"/>
       </Grid>

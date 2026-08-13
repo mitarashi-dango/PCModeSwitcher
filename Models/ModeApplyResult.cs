@@ -5,7 +5,8 @@ public sealed record ApplyStepResult(
     bool IsSuccess,
     string Message,
     string? TechnicalDetails = null,
-    bool IsSkipped = false);
+    bool IsSkipped = false,
+    string? DisplayName = null);
 
 public sealed class ModeApplyResult
 {
@@ -19,8 +20,21 @@ public sealed class ModeApplyResult
             : Steps.Any(step => step.IsSuccess && !step.IsSkipped)
                 ? $"{modeName}モードを一部適用しました"
                 : $"{modeName}モードを適用できませんでした";
-        var details = string.Join(Environment.NewLine,
-            Steps.Select(step => $"{(step.IsSkipped ? "–" : step.IsSuccess ? "✓" : "×")} {step.Name}"));
+        var details = string.Join(Environment.NewLine, Steps.Select(FormatStep));
         return $"{heading}{Environment.NewLine}{Environment.NewLine}{details}";
+    }
+
+    private static string FormatStep(ApplyStepResult step)
+    {
+        var name = step.DisplayName ?? step.Name;
+        if (step.IsSkipped)
+            return $"– {name}";
+        if (step.IsSuccess)
+            return $"✓ {name}";
+
+        var reason = step.Message.Trim().TrimEnd('。');
+        return string.IsNullOrWhiteSpace(reason)
+            ? $"⚠ {name}"
+            : $"⚠ {name}（{reason}）";
     }
 }

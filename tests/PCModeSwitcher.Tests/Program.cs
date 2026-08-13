@@ -20,6 +20,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("電源3設定の一括適用", TestModeApplyAsync),
     ("マイクミュート設定の適用と復元", TestMicrophoneMuteAsync),
     ("モードの4設定一括適用", TestModeMicrophoneIntegrationAsync),
+    ("モード適用結果の表示", TestModeApplyResultDisplayAsync),
     ("途中失敗時の復元と結果表示", TestPartialFailureRollbackAsync)
 };
 
@@ -437,9 +438,15 @@ static Task TestMicrophoneMuteAsync()
     Assert(noChange.IsSuccess, "『変更しない』が失敗しました。");
     Assert(accessor.GetCount == 0 && accessor.SetCount == 0,
         "『変更しない』でマイクへアクセスしました。");
+    var initialState = service.GetCurrentMuted();
+    Assert(initialState.IsSuccess && !initialState.Value,
+        "現在のミュート解除状態を取得できませんでした。");
 
     var mute = service.Apply(MicrophoneMuteSetting.Mute);
     Assert(mute.IsSuccess && accessor.Muted, "マイクをミュートできませんでした。");
+    var mutedState = service.GetCurrentMuted();
+    Assert(mutedState.IsSuccess && mutedState.Value,
+        "現在のミュート状態を取得できませんでした。");
 
     var unmute = service.Apply(MicrophoneMuteSetting.Unmute);
     Assert(unmute.IsSuccess && !accessor.Muted, "マイクのミュートを解除できませんでした。");
@@ -478,16 +485,60 @@ static async Task TestModeMicrophoneIntegrationAsync()
             ?? throw new InvalidOperationException("GAMEモードの適用結果がありません。");
         Assert(result.IsSuccess, "マイクを含むモード適用に失敗しました。");
         Assert(result.Steps.Count == 4 &&
-               result.Steps.Single(step => step.Name == "マイク") is { IsSuccess: true, IsSkipped: false },
+               result.Steps.Single(step => step.Name == "マイク") is
+                   { IsSuccess: true, IsSkipped: false, DisplayName: "マイク：OFF" },
             "モード適用結果にマイクが含まれていません。");
+        Assert(viewModel.StatusMessage.Contains("✓ マイク：OFF", StringComparison.Ordinal),
+            "成功時のマイク設定が結果表示で分かりません。");
         Assert(microphoneMuteService.LastSetting == MicrophoneMuteSetting.Mute,
             "モードに保存したマイク設定が適用されていません。");
+
+        microphoneMuteService.CurrentMuted = true;
+        var noChangeResult = await viewModel.ApplyModeByIdAsync("normal")
+            ?? throw new InvalidOperationException("NORMALモードの適用結果がありません。");
+        Assert(noChangeResult.IsSuccess && viewModel.StatusMessage.Contains(
+                "– マイク：変更しない（現在：OFF）", StringComparison.Ordinal),
+            "変更しない場合に現在のマイク状態が表示されていません。");
+
+        microphoneMuteService.CurrentStateResult =
+            OperationResult<bool>.Failure("テスト用の読み取り失敗です。");
+        var unknownStateResult = await viewModel.ApplyModeByIdAsync("normal")
+            ?? throw new InvalidOperationException("NORMALモードの再適用結果がありません。");
+        Assert(unknownStateResult.IsSuccess && viewModel.StatusMessage.Contains(
+                "– マイク：変更しない（現在状態を確認できません）", StringComparison.Ordinal),
+            "マイクがない場合の現在状態が分かる表示になっていません。");
     }
     finally
     {
         if (Directory.Exists(testDirectory))
             Directory.Delete(testDirectory, true);
     }
+}
+
+static Task TestModeApplyResultDisplayAsync()
+{
+    var result = new ModeApplyResult
+    {
+        Steps =
+        [
+            new ApplyStepResult("電源モード", true, "変更しました。"),
+            new ApplyStepResult("マイク", true, "変更しませんでした。", IsSkipped: true,
+                DisplayName: "マイク：変更しない（現在：ON）"),
+            new ApplyStepResult("マイク", false, "既定のマイクのミュート状態を確認できませんでした。",
+                DisplayName: "マイク：OFF")
+        ]
+    };
+
+    var message = result.ToUserMessage("テスト");
+    Assert(message.Contains("✓ 電源モード", StringComparison.Ordinal),
+        "成功した項目の表示が正しくありません。");
+    Assert(message.Contains("– マイク：変更しない（現在：ON）", StringComparison.Ordinal),
+        "変更しない場合のマイク設定が表示されていません。");
+    Assert(message.Contains(
+            "⚠ マイク：OFF（既定のマイクのミュート状態を確認できませんでした）",
+            StringComparison.Ordinal),
+        "失敗時のマイク設定と理由が表示されていません。");
+    return Task.CompletedTask;
 }
 
 static async Task TestCurrentModeDetectionAsync()
@@ -580,7 +631,7 @@ static Task TestTrayModeToolTipAsync()
     editedMode.MicrophoneMute = MicrophoneMuteSetting.Mute;
     card.Replace(editedMode);
     Assert(toolTipChanged && card.TrayToolTipText.EndsWith(
-            "マイク設定（適用時）: ミュート", StringComparison.Ordinal),
+            "マイク設定（適用時）: OFF", StringComparison.Ordinal),
         "モード編集後に通知領域の説明が更新されていません。");
 
     toolTipChanged = false;
@@ -741,12 +792,17 @@ sealed class FakeMicrophoneMuteAccessor : IMicrophoneMuteAccessor
 sealed class FakeMicrophoneMuteService : IMicrophoneMuteService
 {
     public MicrophoneMuteSetting? LastSetting { get; private set; }
+    public bool CurrentMuted { get; set; }
+    public OperationResult<bool>? CurrentStateResult { get; set; }
 
     public OperationResult Apply(MicrophoneMuteSetting setting)
     {
         LastSetting = setting;
         return OperationResult.Success();
     }
+
+    public OperationResult<bool> GetCurrentMuted() =>
+        CurrentStateResult ?? OperationResult<bool>.Success(CurrentMuted);
 }
 
 sealed class FakeGlobalHotkeyService : IGlobalHotkeyService

@@ -16,8 +16,8 @@ public partial class ModeEditorWindow : Window
     public ObservableCollection<MicrophoneMuteChoice> MicrophoneChoices { get; } =
     [
         new(MicrophoneMuteSetting.NoChange, "変更しない"),
-        new(MicrophoneMuteSetting.Mute, "ミュート"),
-        new(MicrophoneMuteSetting.Unmute, "ミュート解除")
+        new(MicrophoneMuteSetting.Mute, "OFF（ミュート）"),
+        new(MicrophoneMuteSetting.Unmute, "ON（ミュート解除）")
     ];
     public TimeoutChoice? DisplayAc { get; set; }
     public TimeoutChoice? DisplayBattery { get; set; }

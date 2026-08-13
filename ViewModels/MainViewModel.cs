@@ -276,6 +276,7 @@ public sealed class MainViewModel : ObservableObject
         {
             var powerResult = await _powerService.ApplyModeAsync(card.Mode);
             var microphoneResult = _microphoneMuteService.Apply(card.Mode.MicrophoneMute);
+            var microphoneDisplayName = GetMicrophoneResultDisplayName(card);
             var result = new ModeApplyResult
             {
                 Steps =
@@ -286,7 +287,8 @@ public sealed class MainViewModel : ObservableObject
                         microphoneResult.IsSuccess,
                         microphoneResult.UserMessage,
                         microphoneResult.TechnicalDetails,
-                        card.Mode.MicrophoneMute == MicrophoneMuteSetting.NoChange)
+                        card.Mode.MicrophoneMute == MicrophoneMuteSetting.NoChange,
+                        microphoneDisplayName)
                 ]
             };
             StatusMessage = result.ToUserMessage(card.Name);
@@ -309,6 +311,17 @@ public sealed class MainViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    private string GetMicrophoneResultDisplayName(ModeCardViewModel card)
+    {
+        if (card.Mode.MicrophoneMute != MicrophoneMuteSetting.NoChange)
+            return $"マイク：{card.MicrophoneSummary}";
+
+        var current = _microphoneMuteService.GetCurrentMuted();
+        return current.IsSuccess
+            ? $"マイク：変更しない（現在：{(current.Value ? "OFF" : "ON")}）"
+            : "マイク：変更しない（現在状態を確認できません）";
     }
 
     private async Task EditModeAsync(object? parameter)

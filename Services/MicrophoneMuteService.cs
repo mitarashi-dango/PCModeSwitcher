@@ -13,6 +13,8 @@ public sealed class MicrophoneMuteService : IMicrophoneMuteService
         _accessor = accessor;
     }
 
+    public OperationResult<bool> GetCurrentMuted() => _accessor.GetMuted();
+
     public OperationResult Apply(MicrophoneMuteSetting setting)
     {
         if (!Enum.IsDefined(setting))

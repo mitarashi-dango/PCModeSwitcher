@@ -1,8 +1,8 @@
-# PC Mode Switcher 0.3
+# PC Mode Switcher 0.3.1
 
 PC Mode Switcherは、Windows 11の画面OFF時間、スリープ時間、電源プラン、既定マイクのミュート状態を、GAME / WORK / NORMAL / CUSTOM1〜6の9モードとしてまとめて切り替えるWPFアプリです。アプリ画面には好きな1〜5モードを表示できます（初期状態はGAME / WORK / NORMAL / CUSTOM1 / CUSTOM2）。
 
-各モードのマイク設定は「変更しない」「ミュート」「ミュート解除」から選択でき、既定値は「変更しない」です。
+各モードのマイク設定は「変更しない」「OFF（ミュート）」「ON（ミュート解除）」から選択でき、既定値は「変更しない」です。
 
 Windowsが報告する実際のバッテリー有無を判定し、バッテリー未搭載PCではバッテリー用の画面OFF・スリープ設定を表示せず、適用もしません。保存済みのバッテリー設定値は保持されます。
 
@@ -34,7 +34,7 @@ dotnet build .\PCModeSwitcher.csproj -c Release
 
 `artifacts` フォルダーへ次のファイルが作成されます。
 
-- `PCModeSwitcher-v0.3.0-win-x64.zip`
+- `PCModeSwitcher-v0.3.1-win-x64.zip`
 - `SHA256SUMS.txt`
 
 ZIPには実行ファイル、利用者向けREADME、リリースノートが含まれます。コード署名は行っていないため、ダウンロードした環境ではSmartScreenの警告が表示される場合があります。

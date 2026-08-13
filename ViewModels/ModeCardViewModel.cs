@@ -29,8 +29,8 @@ public sealed class ModeCardViewModel : ObservableObject
     public string MicrophoneSummary => _mode.MicrophoneMute switch
     {
         MicrophoneMuteSetting.NoChange => "変更しない",
-        MicrophoneMuteSetting.Mute => "ミュート",
-        MicrophoneMuteSetting.Unmute => "ミュート解除",
+        MicrophoneMuteSetting.Mute => "OFF",
+        MicrophoneMuteSetting.Unmute => "ON",
         _ => "設定エラー"
     };
     public string TrayToolTipText => string.Join(
