@@ -41,6 +41,70 @@ public sealed class PowerSettingsService
         }
     }
 
+    public async Task<OperationResult<ModeDetectionResult>> DetectCurrentModeAsync(
+        IReadOnlyCollection<PcMode> modes,
+        string? preferredModeId = null)
+    {
+        await _operationGate.WaitAsync();
+        try
+        {
+            var activeScheme = _policy.GetActiveScheme();
+            if (!activeScheme.IsSuccess)
+            {
+                return OperationResult<ModeDetectionResult>.Failure(
+                    "現在のWindows電源設定を確認できませんでした。",
+                    activeScheme.TechnicalDetails);
+            }
+
+            var displayAc = _policy.ReadValue(
+                activeScheme.Value, VideoSubgroupId, DisplayTimeoutId, PowerSource.Ac);
+            var sleepAc = _policy.ReadValue(
+                activeScheme.Value, SleepSubgroupId, SleepTimeoutId, PowerSource.Ac);
+            if (!displayAc.IsSuccess || !sleepAc.IsSuccess)
+            {
+                return OperationResult<ModeDetectionResult>.Failure(
+                    "現在のWindows電源設定を確認できませんでした。",
+                    CombineTechnicalDetails(displayAc, sleepAc));
+            }
+
+            var hasBattery = HasBattery;
+            OperationResult<uint>? displayDc = null;
+            OperationResult<uint>? sleepDc = null;
+            if (hasBattery)
+            {
+                displayDc = _policy.ReadValue(
+                    activeScheme.Value, VideoSubgroupId, DisplayTimeoutId, PowerSource.Dc);
+                sleepDc = _policy.ReadValue(
+                    activeScheme.Value, SleepSubgroupId, SleepTimeoutId, PowerSource.Dc);
+                if (!displayDc.IsSuccess || !sleepDc.IsSuccess)
+                {
+                    return OperationResult<ModeDetectionResult>.Failure(
+                        "現在のWindows電源設定を確認できませんでした。",
+                        CombineTechnicalDetails(displayDc, sleepDc));
+                }
+            }
+
+            var matches = modes.Where(mode =>
+                mode.PowerPlanId == activeScheme.Value &&
+                mode.DisplayTimeoutAc == displayAc.Value &&
+                mode.SleepTimeoutAc == sleepAc.Value &&
+                (!hasBattery ||
+                    (mode.DisplayTimeoutBattery == displayDc!.Value &&
+                     mode.SleepTimeoutBattery == sleepDc!.Value)))
+                .ToList();
+            var match = matches.FirstOrDefault(mode =>
+                    string.Equals(mode.Id, preferredModeId, StringComparison.OrdinalIgnoreCase))
+                ?? matches.FirstOrDefault();
+
+            return OperationResult<ModeDetectionResult>.Success(
+                new ModeDetectionResult(match?.Id));
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
     public async Task<ModeApplyResult> ApplyModeAsync(PcMode mode)
     {
         await _operationGate.WaitAsync();
@@ -205,6 +269,16 @@ public sealed class PowerSettingsService
             : OperationResult.Failure(
                 $"{settingName}時間の変更に失敗し、元の値へ完全には戻せませんでした。Windowsの設定画面で確認してください。",
                 string.Join("; ", new[] { failureDetails }.Concat(errors).Where(value => !string.IsNullOrWhiteSpace(value))));
+    }
+
+    private static string? CombineTechnicalDetails(params OperationResult<uint>[] results)
+    {
+        var details = results
+            .Where(result => !result.IsSuccess)
+            .Select(result => result.TechnicalDetails ?? result.UserMessage)
+            .Where(detail => !string.IsNullOrWhiteSpace(detail));
+        var combined = string.Join("; ", details);
+        return string.IsNullOrWhiteSpace(combined) ? null : combined;
     }
 
     private static bool DetectBattery() =>

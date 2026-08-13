@@ -2,6 +2,7 @@ using PCModeSwitcher.Services;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.ViewModels;
 using PCModeSwitcher.Views;
+using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 using Wpf = System.Windows;
 using WpfInterop = System.Windows.Interop;
@@ -66,6 +67,7 @@ public partial class App : Wpf.Application
         CreateTrayIcon();
         viewModel.PropertyChanged += OnMainViewModelPropertyChanged;
         window.HiddenToTray += OnWindowHiddenToTray;
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SessionEnding += (_, _) => window.AllowClose();
         if (_isWindowHiddenToTray)
         {
@@ -111,6 +113,7 @@ public partial class App : Wpf.Application
             _mainViewModel.PropertyChanged -= OnMainViewModelPropertyChanged;
         }
         _mainViewModel = null;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
 
         if (_singleInstanceCoordinator is not null)
         {
@@ -212,6 +215,18 @@ public partial class App : Wpf.Application
     private void OnHotkeyPressed(object? sender, ModeHotkeyPressedEventArgs e)
     {
         Dispatcher.BeginInvoke(new Action(async () => await ApplyModeFromTrayAsync(e.ModeId)));
+    }
+
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != PowerModes.Resume)
+            return;
+
+        Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            if (_mainViewModel is not null)
+                await _mainViewModel.RefreshCurrentModeAsync();
+        }));
     }
 
     private void UpdateTrayIconVisibility(CloseButtonBehavior behavior)

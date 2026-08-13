@@ -6,6 +6,8 @@ namespace PCModeSwitcher.Services;
 
 public sealed class SettingsService
 {
+    private static readonly string[] RequiredModeIds = ["game", "work", "normal", "custom"];
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -92,7 +94,11 @@ public sealed class SettingsService
 
     public static AppSettings CreateDefaults() => new()
     {
-        Modes =
+        Modes = CreateDefaultModes(),
+        Hotkeys = CreateDefaultHotkeys()
+    };
+
+    private static List<PcMode> CreateDefaultModes() =>
         [
             new PcMode
             {
@@ -114,22 +120,37 @@ public sealed class SettingsService
                 DisplayTimeoutAc = 5 * 60, DisplayTimeoutBattery = 5 * 60,
                 SleepTimeoutAc = 15 * 60, SleepTimeoutBattery = 15 * 60,
                 PowerPlanId = PowerSettingsService.BalancedSchemeId
+            },
+            new PcMode
+            {
+                Id = "custom", Name = "CUSTOM", Icon = "⚙",
+                DisplayTimeoutAc = 15 * 60, DisplayTimeoutBattery = 15 * 60,
+                SleepTimeoutAc = 60 * 60, SleepTimeoutBattery = 60 * 60,
+                PowerPlanId = PowerSettingsService.BalancedSchemeId
             }
-        ],
-        Hotkeys = CreateDefaultHotkeys()
-    };
+        ];
 
     public static List<ModeHotkey> CreateDefaultHotkeys() =>
     [
         new() { ModeId = "game" },
         new() { ModeId = "work" },
-        new() { ModeId = "normal" }
+        new() { ModeId = "normal" },
+        new() { ModeId = "custom" }
     ];
 
     private static void Normalize(AppSettings settings)
     {
         settings.Modes ??= [];
         settings.Hotkeys ??= [];
+        foreach (var defaultMode in CreateDefaultModes())
+        {
+            if (!settings.Modes.Any(mode =>
+                string.Equals(mode.Id, defaultMode.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                settings.Modes.Add(defaultMode);
+            }
+        }
+
         foreach (var defaultHotkey in CreateDefaultHotkeys())
         {
             if (!settings.Hotkeys.Any(hotkey =>
@@ -144,7 +165,11 @@ public sealed class SettingsService
         settings.Version == 1 &&
         Enum.IsDefined(settings.CloseButtonBehavior) &&
         HotkeyValidator.Validate(settings.Hotkeys).IsSuccess &&
-        settings.Modes.Count == 3 &&
+        settings.Modes.Count == RequiredModeIds.Length &&
+        settings.Modes.Select(mode => mode.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count() == RequiredModeIds.Length &&
+        RequiredModeIds.All(modeId => settings.Modes.Any(mode =>
+            string.Equals(mode.Id, modeId, StringComparison.OrdinalIgnoreCase))) &&
         settings.Modes.All(mode =>
             !string.IsNullOrWhiteSpace(mode.Id) &&
             !string.IsNullOrWhiteSpace(mode.Name) &&

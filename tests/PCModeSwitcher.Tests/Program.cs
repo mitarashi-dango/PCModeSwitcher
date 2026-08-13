@@ -5,14 +5,16 @@ using System.Text.Json;
 
 var tests = new List<(string Name, Func<Task> Run)>
 {
-    ("既定の3モード", TestDefaultModesAsync),
+    ("既定の4モード", TestDefaultModesAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
     ("スタートアップ起動引数の判定", TestStartupLaunchArgumentAsync),
     ("ショートカットの入力検証", TestHotkeyValidationAsync),
     ("アプリ設定の連携と失敗時復元", TestAppPreferenceIntegrationAsync),
+    ("起動時に前回値より実際のWindows設定を優先", TestInitialModeDetectionAsync),
     ("多重起動の検出と既存画面への通知", TestSingleInstanceCoordinatorAsync),
     ("利用可能な電源プランの読み取り", TestPowerPlanEnumerationAsync),
+    ("Windows設定からの現在モード自動判定", TestCurrentModeDetectionAsync),
     ("バッテリー有無による表示と適用の切り替え", TestBatteryAwareBehaviorAsync),
     ("モードの3設定一括適用", TestModeApplyAsync),
     ("途中失敗時の復元と結果表示", TestPartialFailureRollbackAsync)
@@ -45,8 +47,8 @@ return 0;
 static Task TestDefaultModesAsync()
 {
     var settings = SettingsService.CreateDefaults();
-    Assert(settings.Modes.Count == 3, "モード数が3ではありません。");
-    Assert(settings.Modes.Select(mode => mode.Id).SequenceEqual(["game", "work", "normal"]),
+    Assert(settings.Modes.Count == 4, "モード数が4ではありません。");
+    Assert(settings.Modes.Select(mode => mode.Id).SequenceEqual(["game", "work", "normal", "custom"]),
         "既定モードの並びが正しくありません。");
     Assert(settings.Modes[0].DisplayTimeoutAc == 0 && settings.Modes[0].SleepTimeoutAc == 0,
         "GAMEの既定タイムアウトが正しくありません。");
@@ -56,7 +58,9 @@ static Task TestDefaultModesAsync()
         "通知領域への格納通知が既定で有効になっています。");
     Assert(!settings.StartWithWindows,
         "Windowsログイン時の自動起動が既定で有効になっています。");
-    Assert(settings.Hotkeys.Count == 3 && settings.Hotkeys.All(hotkey => !hotkey.IsConfigured),
+    Assert(settings.Modes[3].Name == "CUSTOM" && settings.Modes[3].Icon == "⚙",
+        "CUSTOMの既定表示が正しくありません。");
+    Assert(settings.Hotkeys.Count == 4 && settings.Hotkeys.All(hotkey => !hotkey.IsConfigured),
         "ショートカットの既定値が未設定ではありません。");
     return Task.CompletedTask;
 }
@@ -109,7 +113,7 @@ static async Task TestLegacySettingsMigrationAsync()
         var legacySettings = new
         {
             defaults.Version,
-            defaults.Modes,
+            Modes = defaults.Modes.Where(mode => mode.Id != "custom").ToList(),
             defaults.LastAppliedModeId,
             defaults.CloseButtonBehavior,
             defaults.ShowTrayNotification
@@ -122,9 +126,12 @@ static async Task TestLegacySettingsMigrationAsync()
         Assert(load.IsSuccess && load.Value is not null, "旧設定ファイルを読み込めませんでした。");
         var migrated = load.Value ?? throw new InvalidOperationException("移行後の設定データがありません。");
         Assert(!migrated.StartWithWindows, "移行後の自動起動設定が既定値ではありません。");
+        Assert(migrated.Modes.Select(mode => mode.Id)
+                .SequenceEqual(["game", "work", "normal", "custom"]),
+            "旧設定へCUSTOMモードが補完されませんでした。");
         Assert(migrated.Hotkeys.Select(hotkey => hotkey.ModeId)
-                .SequenceEqual(["game", "work", "normal"]),
-            "旧設定へ3モードのショートカット設定が補完されませんでした。");
+                .SequenceEqual(["game", "work", "normal", "custom"]),
+            "旧設定へ4モードのショートカット設定が補完されませんでした。");
         Assert(migrated.Hotkeys.All(hotkey => !hotkey.IsConfigured),
             "旧設定の移行時にショートカットが勝手に有効になりました。");
     }
@@ -191,6 +198,12 @@ static async Task TestAppPreferenceIntegrationAsync()
         Assert(viewModel.CurrentModeId == "work" && viewModel.CurrentModeName == "WORK",
             "通知領域用のモード適用後に現在のモードが更新されていません。");
 
+        var customApplyResult = await viewModel.ApplyModeByIdAsync(MainViewModel.CustomModeId);
+        Assert(customApplyResult?.IsSuccess == true, "CUSTOMモードの適用に失敗しました。");
+        Assert(viewModel.CurrentModeId == MainViewModel.CustomModeId &&
+               viewModel.CurrentModeName == "CUSTOM",
+            "CUSTOMモード適用後に現在のモードが更新されていません。");
+
         var hotkeys = SettingsService.CreateDefaultHotkeys();
         hotkeys[0].Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt;
         hotkeys[0].VirtualKey = 0x47;
@@ -218,6 +231,53 @@ static async Task TestAppPreferenceIntegrationAsync()
         Assert(startup.Enabled, "ショートカット登録失敗後にスタートアップ設定が復元されていません。");
         Assert(viewModel.CloseButtonBehavior == CloseButtonBehavior.MinimizeToTray,
             "ショートカット登録失敗後に保存前の設定が変わっています。");
+    }
+    finally
+    {
+        if (Directory.Exists(testDirectory))
+            Directory.Delete(testDirectory, true);
+    }
+}
+
+static async Task TestInitialModeDetectionAsync()
+{
+    var testDirectory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.Tests.{Guid.NewGuid():N}");
+    try
+    {
+        var planId = Guid.NewGuid();
+        var settingsService = new SettingsService(testDirectory);
+        var settings = SettingsService.CreateDefaults();
+        foreach (var mode in settings.Modes)
+            mode.PowerPlanId = planId;
+        settings.LastAppliedModeId = "game";
+        var save = await settingsService.SaveAsync(settings);
+        Assert(save.IsSuccess, "自動判定テスト用の設定を保存できませんでした。");
+
+        var actualMode = settings.Modes.Single(mode => mode.Id == "work");
+        var policy = new FakePowerPolicyAccessor(planId);
+        policy.SetValue(PowerSettingsService.DisplayTimeoutId, PowerSource.Ac, actualMode.DisplayTimeoutAc);
+        policy.SetValue(PowerSettingsService.DisplayTimeoutId, PowerSource.Dc, actualMode.DisplayTimeoutBattery);
+        policy.SetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Ac, actualMode.SleepTimeoutAc);
+        policy.SetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Dc, actualMode.SleepTimeoutBattery);
+
+        var viewModel = new MainViewModel(
+            settingsService,
+            new PowerSettingsService(policy, () => true),
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService());
+        await viewModel.InitializeAsync();
+
+        Assert(viewModel.CurrentModeId == "work" && viewModel.CurrentModeName == "WORK",
+            "起動時に前回適用したモードではなく実際のWindows設定が優先されていません。");
+
+        policy.SetValue(
+            PowerSettingsService.SleepTimeoutId,
+            PowerSource.Ac,
+            actualMode.SleepTimeoutAc + 1);
+        await viewModel.RefreshCurrentModeAsync();
+        Assert(viewModel.CurrentModeId == MainViewModel.UnregisteredModeId &&
+               viewModel.CurrentModeName == "未登録の設定",
+            "外部で変更されたWindows設定が未登録表示へ反映されませんでした。");
     }
     finally
     {
@@ -301,6 +361,38 @@ static async Task TestModeApplyAsync()
         "ACスリープ時間が適用されていません。");
     Assert(policy.GetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Dc) == mode.SleepTimeoutBattery,
         "DCスリープ時間が適用されていません。");
+}
+
+static async Task TestCurrentModeDetectionAsync()
+{
+    var planId = Guid.NewGuid();
+    var policy = new FakePowerPolicyAccessor(planId);
+    var service = new PowerSettingsService(policy, () => true);
+    var mode = CreateTestMode(planId);
+
+    var apply = await service.ApplyModeAsync(mode);
+    Assert(apply.IsSuccess, "自動判定用のモードを適用できませんでした。");
+
+    var detected = await service.DetectCurrentModeAsync([mode]);
+    Assert(detected.IsSuccess && detected.Value?.ModeId == mode.Id,
+        "実際のWindows設定と一致するモードを判定できませんでした。");
+
+    policy.SetValue(PowerSettingsService.DisplayTimeoutId, PowerSource.Ac, mode.DisplayTimeoutAc + 1);
+    var unregistered = await service.DetectCurrentModeAsync([mode]);
+    Assert(unregistered.IsSuccess && unregistered.Value?.IsUnregistered == true,
+        "登録モードと一致しない設定が未登録として判定されませんでした。");
+
+    var desktopPolicy = new FakePowerPolicyAccessor(planId);
+    var desktopService = new PowerSettingsService(desktopPolicy, () => false);
+    var desktopApply = await desktopService.ApplyModeAsync(mode);
+    Assert(desktopApply.IsSuccess, "デスクトップPC用のモードを適用できませんでした。");
+    Assert(desktopPolicy.GetValue(PowerSettingsService.DisplayTimeoutId, PowerSource.Dc) !=
+           mode.DisplayTimeoutBattery,
+        "判定テストのDC値が偶然一致しています。");
+
+    var desktopDetected = await desktopService.DetectCurrentModeAsync([mode]);
+    Assert(desktopDetected.IsSuccess && desktopDetected.Value?.ModeId == mode.Id,
+        "バッテリーなしPCで不要なDC設定が現在モード判定へ影響しています。");
 }
 
 static async Task TestBatteryAwareBehaviorAsync()
@@ -435,6 +527,9 @@ sealed class FakePowerPolicyAccessor : IPowerPolicyAccessor
     }
 
     public uint GetValue(Guid settingId, PowerSource source) => _values[(settingId, source)];
+
+    public void SetValue(Guid settingId, PowerSource source, uint value) =>
+        _values[(settingId, source)] = value;
 }
 
 sealed class FakeStartupService : IStartupService

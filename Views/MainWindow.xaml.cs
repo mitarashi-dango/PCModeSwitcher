@@ -35,6 +35,13 @@ public partial class MainWindow : Window
         _allowClose = true;
     }
 
+    protected override async void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        if (DataContext is MainViewModel viewModel)
+            await viewModel.RefreshCurrentModeAsync();
+    }
+
     protected override void OnClosing(CancelEventArgs e)
     {
         var minimizeToTray = DataContext is not MainViewModel viewModel ||

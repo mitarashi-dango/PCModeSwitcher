@@ -8,6 +8,9 @@ namespace PCModeSwitcher.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
 {
+    public const string CustomModeId = "custom";
+    public const string UnregisteredModeId = "unregistered";
+
     private readonly SettingsService _settingsService;
     private readonly PowerSettingsService _powerService;
     private readonly IStartupService _startupService;
@@ -15,8 +18,8 @@ public sealed class MainViewModel : ObservableObject
     private AppSettings _settings = SettingsService.CreateDefaults();
     private bool _isBusy;
     private string? _currentModeId;
-    private string _currentModeName = "未選択";
-    private string _currentModeIcon = "—";
+    private string _currentModeName = "確認中";
+    private string _currentModeIcon = "…";
     private string _statusMessage = "モードを選ぶと、3つの設定をまとめて切り替えます。";
 
     public ObservableCollection<ModeCardViewModel> Modes { get; } = [];
@@ -107,7 +110,9 @@ public sealed class MainViewModel : ObservableObject
             var hasBattery = _powerService.HasBattery;
             foreach (var mode in _settings.Modes)
                 Modes.Add(new ModeCardViewModel(mode, GetPowerPlanName, hasBattery));
-            SetCurrentMode(_settings.LastAppliedModeId);
+            var detection = await RefreshCurrentModeCoreAsync();
+            if (!detection.IsSuccess)
+                AppendStatusWarning(detection.UserMessage);
         }
         finally
         {
@@ -193,6 +198,24 @@ public sealed class MainViewModel : ObservableObject
             : ApplyModeCardAsync(card);
     }
 
+    public async Task RefreshCurrentModeAsync()
+    {
+        if (IsBusy || Modes.Count == 0)
+            return;
+
+        IsBusy = true;
+        try
+        {
+            var result = await RefreshCurrentModeCoreAsync();
+            if (!result.IsSuccess)
+                StatusMessage = result.UserMessage;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task ApplyModeAsync(object? parameter)
     {
         if (parameter is ModeCardViewModel card)
@@ -216,10 +239,13 @@ public sealed class MainViewModel : ObservableObject
             if (result.IsSuccess)
             {
                 _settings.LastAppliedModeId = card.Mode.Id;
-                SetCurrentMode(card.Mode.Id);
                 var save = await _settingsService.SaveAsync(_settings);
                 if (!save.IsSuccess)
                     StatusMessage += $"{Environment.NewLine}{Environment.NewLine}※ {save.UserMessage}";
+
+                var detection = await RefreshCurrentModeCoreAsync();
+                if (!detection.IsSuccess)
+                    StatusMessage += $"{Environment.NewLine}{Environment.NewLine}※ {detection.UserMessage}";
             }
 
             return result;
@@ -253,7 +279,9 @@ public sealed class MainViewModel : ObservableObject
         StatusMessage = result.IsSuccess
             ? $"{card.Name}モードの設定を保存しました。"
             : result.UserMessage;
-        SetCurrentMode(_settings.LastAppliedModeId);
+        var detection = await RefreshCurrentModeCoreAsync();
+        if (!detection.IsSuccess)
+            AppendStatusWarning(detection.UserMessage);
     }
 
     private void RepairUnavailableDefaultPlans()
@@ -271,12 +299,44 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private void SetCurrentMode(string? modeId)
+    private async Task<OperationResult> RefreshCurrentModeCoreAsync()
+    {
+        var detection = await _powerService.DetectCurrentModeAsync(
+            _settings.Modes,
+            _settings.LastAppliedModeId);
+        if (!detection.IsSuccess || detection.Value is null)
+        {
+            SetUnconfirmedMode();
+            return OperationResult.Failure(
+                detection.UserMessage,
+                detection.TechnicalDetails);
+        }
+
+        SetDetectedMode(detection.Value.ModeId);
+        return OperationResult.Success();
+    }
+
+    private void SetDetectedMode(string? modeId)
     {
         var mode = _settings.Modes.FirstOrDefault(value => value.Id == modeId);
-        CurrentModeId = mode?.Id;
-        CurrentModeName = mode?.Name ?? "未選択";
-        CurrentModeIcon = mode?.Icon ?? "—";
+        if (mode is not null)
+        {
+            CurrentModeId = mode.Id;
+            CurrentModeName = mode.Name;
+            CurrentModeIcon = mode.Icon;
+            return;
+        }
+
+        CurrentModeId = UnregisteredModeId;
+        CurrentModeName = "未登録の設定";
+        CurrentModeIcon = "?";
+    }
+
+    private void SetUnconfirmedMode()
+    {
+        CurrentModeId = null;
+        CurrentModeName = "確認できません";
+        CurrentModeIcon = "?";
     }
 
     private string GetPowerPlanName(Guid planId) =>

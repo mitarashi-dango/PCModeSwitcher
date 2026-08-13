@@ -128,6 +128,7 @@ public partial class SettingsWindow : Window
         GameHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["game"]);
         WorkHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["work"]);
         NormalHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["normal"]);
+        CustomHotkeyTextBox.Text = HotkeyValidator.Format(_hotkeys["custom"]);
     }
 
     private void ShowShortcutValidation(string message)

@@ -86,7 +86,7 @@
               <Button Grid.Column="2" Content="解除" Tag="work" Padding="12,6"
                       Click="ClearHotkey_Click"/>
             </Grid>
-            <Grid>
+            <Grid Margin="0,0,0,10">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="85"/>
                 <ColumnDefinition Width="*"/>
@@ -97,6 +97,19 @@
                        IsReadOnly="True" Padding="10,7" Margin="8,0"
                        PreviewKeyDown="HotkeyTextBox_PreviewKeyDown"/>
               <Button Grid.Column="2" Content="解除" Tag="normal" Padding="12,6"
+                      Click="ClearHotkey_Click"/>
+            </Grid>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="85"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="CUSTOM" FontWeight="Bold" VerticalAlignment="Center"/>
+              <TextBox x:Name="CustomHotkeyTextBox" Grid.Column="1" Tag="custom"
+                       IsReadOnly="True" Padding="10,7" Margin="8,0"
+                       PreviewKeyDown="HotkeyTextBox_PreviewKeyDown"/>
+              <Button Grid.Column="2" Content="解除" Tag="custom" Padding="12,6"
                       Click="ClearHotkey_Click"/>
             </Grid>
             <TextBlock x:Name="ShortcutValidationMessage" Foreground="#B91C1C"
