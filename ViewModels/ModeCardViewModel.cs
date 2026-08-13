@@ -7,12 +7,18 @@ public sealed class ModeCardViewModel : ObservableObject
     private readonly Func<Guid, string> _powerPlanName;
     private readonly bool _hasBattery;
     private PcMode _mode;
+    private bool _showMicrophoneControls;
 
-    public ModeCardViewModel(PcMode mode, Func<Guid, string> powerPlanName, bool hasBattery)
+    public ModeCardViewModel(
+        PcMode mode,
+        Func<Guid, string> powerPlanName,
+        bool hasBattery,
+        bool showMicrophoneControls = true)
     {
         _mode = mode;
         _powerPlanName = powerPlanName;
         _hasBattery = hasBattery;
+        _showMicrophoneControls = showMicrophoneControls;
     }
 
     public PcMode Mode => _mode;
@@ -26,6 +32,15 @@ public sealed class ModeCardViewModel : ObservableObject
     public string SleepSummary =>
         FormatSummary(_mode.SleepTimeoutAc, _mode.SleepTimeoutBattery);
     public string PowerPlanName => _powerPlanName(_mode.PowerPlanId);
+    public bool ShowMicrophoneControls
+    {
+        get => _showMicrophoneControls;
+        set
+        {
+            if (SetProperty(ref _showMicrophoneControls, value))
+                OnPropertyChanged(nameof(TrayToolTipText));
+        }
+    }
     public string MicrophoneSummary => _mode.MicrophoneMute switch
     {
         MicrophoneMuteSetting.NoChange => "変更しない",
@@ -35,10 +50,20 @@ public sealed class ModeCardViewModel : ObservableObject
     };
     public string TrayToolTipText => string.Join(
         Environment.NewLine,
-        $"画面OFF: {DisplaySummary}",
-        $"スリープ: {SleepSummary}",
-        $"電源モード: {PowerPlanName}",
-        $"マイク設定（適用時）: {MicrophoneSummary}");
+        ShowMicrophoneControls
+            ?
+            [
+                $"画面OFF: {DisplaySummary}",
+                $"スリープ: {SleepSummary}",
+                $"電源モード: {PowerPlanName}",
+                $"マイク設定（適用時）: {MicrophoneSummary}"
+            ]
+            :
+            [
+                $"画面OFF: {DisplaySummary}",
+                $"スリープ: {SleepSummary}",
+                $"電源モード: {PowerPlanName}"
+            ]);
 
     public void Replace(PcMode mode)
     {

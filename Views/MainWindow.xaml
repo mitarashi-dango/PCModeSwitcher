@@ -29,50 +29,73 @@
           <TextBlock Text="使い方に合わせて、PC設定を1クリックで切り替えます。"
                      Foreground="#CBD5E1" Margin="0,4,0,0"/>
         </StackPanel>
-        <Border Grid.Column="1" Background="#243047" CornerRadius="12" Padding="18,10">
-          <StackPanel Orientation="Horizontal">
-            <Grid Width="58" Height="30" VerticalAlignment="Center">
-              <Image Source="/Assets/GameModeIcon.png" Stretch="Uniform">
-                <Image.Style>
-                  <Style TargetType="Image">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
-                        <Setter Property="Visibility" Value="Visible"/>
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </Image.Style>
-              </Image>
-              <Rectangle Fill="White"
-                         Visibility="{Binding CurrentModeHasCustomIcon, Converter={StaticResource BoolToVisibility}}">
-                <Rectangle.OpacityMask>
-                  <ImageBrush ImageSource="{Binding CurrentModeCustomIconSource}" Stretch="Uniform"/>
-                </Rectangle.OpacityMask>
-              </Rectangle>
-              <TextBlock Text="{Binding CurrentModeIcon}" FontFamily="Segoe UI Emoji"
-                         Foreground="White" FontSize="26"
-                         HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock.Style>
-                  <Style TargetType="TextBlock">
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <Button Content="{Binding MicrophoneButtonText}"
+                  Command="{Binding ToggleMicrophoneCommand}"
+                  ToolTip="{Binding MicrophoneButtonToolTip}"
+                  AutomationProperties.Name="{Binding MicrophoneButtonText}"
+                  Visibility="{Binding ShowMicrophoneControls, Converter={StaticResource BoolToVisibility}}"
+                  MinWidth="112" Margin="0,0,12,0" Padding="18,8"
+                  Foreground="White" FontWeight="SemiBold" BorderThickness="0">
+            <Button.Style>
+              <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="#475569"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsMicrophoneOn}" Value="True">
+                    <Setter Property="Background" Value="#15803D"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding IsMicrophoneOn}" Value="False">
+                    <Setter Property="Background" Value="#B91C1C"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Button.Style>
+          </Button>
+          <Border Background="#243047" CornerRadius="12" Padding="18,10">
+            <StackPanel Orientation="Horizontal">
+              <Grid Width="58" Height="30" VerticalAlignment="Center">
+                <Image Source="/Assets/GameModeIcon.png" Stretch="Uniform">
+                  <Image.Style>
+                    <Style TargetType="Image">
+                      <Setter Property="Visibility" Value="Collapsed"/>
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
+                          <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Image.Style>
+                </Image>
+                <Rectangle Fill="White"
+                           Visibility="{Binding CurrentModeHasCustomIcon, Converter={StaticResource BoolToVisibility}}">
+                  <Rectangle.OpacityMask>
+                    <ImageBrush ImageSource="{Binding CurrentModeCustomIconSource}" Stretch="Uniform"/>
+                  </Rectangle.OpacityMask>
+                </Rectangle>
+                <TextBlock Text="{Binding CurrentModeIcon}" FontFamily="Segoe UI Emoji"
+                           Foreground="White" FontSize="26"
+                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                          </DataTrigger>
+                        <DataTrigger Binding="{Binding CurrentModeHasCustomIcon}" Value="True">
                           <Setter Property="Visibility" Value="Collapsed"/>
                         </DataTrigger>
-                      <DataTrigger Binding="{Binding CurrentModeHasCustomIcon}" Value="True">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </TextBlock.Style>
-              </TextBlock>
-            </Grid>
-            <StackPanel Margin="12,0,0,0">
-              <TextBlock Text="現在のモード" Foreground="#94A3B8" FontSize="12"/>
-              <TextBlock Text="{Binding CurrentModeName}" Foreground="White" FontSize="19" FontWeight="SemiBold"/>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+              </Grid>
+              <StackPanel Margin="12,0,0,0">
+                <TextBlock Text="現在のモード" Foreground="#94A3B8" FontSize="12"/>
+                <TextBlock Text="{Binding CurrentModeName}" Foreground="White" FontSize="19" FontWeight="SemiBold"/>
+              </StackPanel>
             </StackPanel>
-          </StackPanel>
-        </Border>
+          </Border>
+        </StackPanel>
       </Grid>
     </Border>
 
@@ -134,8 +157,10 @@
                   <TextBlock Text="{Binding SleepSummary}" Margin="0,2,0,14"/>
                   <TextBlock Text="電源モード" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
                   <TextBlock Text="{Binding PowerPlanName}" Margin="0,2,0,14"/>
-                  <TextBlock Text="マイク" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
-                  <TextBlock Text="{Binding MicrophoneSummary}" Margin="0,2,0,14"/>
+                  <StackPanel Visibility="{Binding ShowMicrophoneControls, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="マイク" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                    <TextBlock Text="{Binding MicrophoneSummary}" Margin="0,2,0,14"/>
+                  </StackPanel>
                 </StackPanel>
                 <StackPanel Grid.Row="3">
                   <Button Content="適用" Style="{StaticResource PrimaryButtonStyle}"

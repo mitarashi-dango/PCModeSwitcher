@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
     public CloseButtonBehavior SelectedBehavior { get; private set; }
     public bool ShowTrayNotification { get; private set; }
     public bool StartWithWindows { get; private set; }
+    public bool ShowMicrophoneControls { get; private set; }
     public ObservableCollection<ModeSettingsItem> ModeItems { get; } = [];
     public IReadOnlyList<ModeHotkey> Hotkeys =>
         ModeItems.Select(item => _hotkeys[item.Id].Copy()).ToList();
@@ -26,6 +27,7 @@ public partial class SettingsWindow : Window
         CloseButtonBehavior currentBehavior,
         bool showTrayNotification,
         bool startWithWindows,
+        bool showMicrophoneControls,
         IReadOnlyCollection<ModeHotkey> hotkeys,
         IReadOnlyCollection<PcMode> modes,
         IReadOnlyCollection<string> visibleModeIds,
@@ -36,6 +38,7 @@ public partial class SettingsWindow : Window
         SelectedBehavior = currentBehavior;
         ShowTrayNotification = showTrayNotification;
         StartWithWindows = startWithWindows;
+        ShowMicrophoneControls = showMicrophoneControls;
         _hotkeys = SettingsService.CreateDefaultHotkeys()
             .ToDictionary(hotkey => hotkey.ModeId, StringComparer.OrdinalIgnoreCase);
         foreach (var hotkey in hotkeys)
@@ -62,6 +65,7 @@ public partial class SettingsWindow : Window
         ExitApplicationOption.IsChecked = currentBehavior == CloseButtonBehavior.ExitApplication;
         ShowTrayNotificationOption.IsChecked = showTrayNotification;
         StartWithWindowsOption.IsChecked = startWithWindows;
+        ShowMicrophoneControlsOption.IsChecked = showMicrophoneControls;
         UpdateHotkeyTextBoxes();
     }
 
@@ -176,6 +180,7 @@ public partial class SettingsWindow : Window
             : CloseButtonBehavior.ExitApplication;
         ShowTrayNotification = ShowTrayNotificationOption.IsChecked == true;
         StartWithWindows = StartWithWindowsOption.IsChecked == true;
+        ShowMicrophoneControls = ShowMicrophoneControlsOption.IsChecked == true;
         DialogResult = true;
     }
 

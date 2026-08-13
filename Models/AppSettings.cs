@@ -8,6 +8,7 @@ public sealed class AppSettings
     public CloseButtonBehavior CloseButtonBehavior { get; set; } = CloseButtonBehavior.MinimizeToTray;
     public bool ShowTrayNotification { get; set; }
     public bool StartWithWindows { get; set; }
+    public bool ShowMicrophoneControls { get; set; } = true;
     public List<ModeHotkey> Hotkeys { get; set; } = [];
     public List<string> VisibleModeIds { get; set; } = [];
 }

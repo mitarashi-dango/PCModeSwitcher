@@ -10,6 +10,7 @@ public partial class ModeEditorWindow : Window
 
     public string ModeName => _source.Name;
     public bool HasBattery { get; }
+    public bool ShowMicrophoneControls { get; }
     public ObservableCollection<TimeoutChoice> DisplayChoices { get; } = CreateChoices([1, 2, 5, 10, 15, 30, 60, 0]);
     public ObservableCollection<TimeoutChoice> SleepChoices { get; } = CreateChoices([1, 5, 10, 15, 30, 60, 120, 0]);
     public ObservableCollection<PowerPlan> PowerPlans { get; }
@@ -27,12 +28,18 @@ public partial class ModeEditorWindow : Window
     public MicrophoneMuteChoice? SelectedMicrophoneMute { get; set; }
     public PcMode? EditedMode { get; private set; }
 
-    public ModeEditorWindow(PcMode mode, IReadOnlyList<PowerPlan> plans, bool hasBattery, Window owner)
+    public ModeEditorWindow(
+        PcMode mode,
+        IReadOnlyList<PowerPlan> plans,
+        bool hasBattery,
+        bool showMicrophoneControls,
+        Window owner)
     {
         InitializeComponent();
         Owner = owner;
         _source = mode;
         HasBattery = hasBattery;
+        ShowMicrophoneControls = showMicrophoneControls;
         PowerPlans = new ObservableCollection<PowerPlan>(plans);
         DisplayAc = FindOrAdd(DisplayChoices, mode.DisplayTimeoutAc);
         DisplayBattery = FindOrAdd(DisplayChoices, mode.DisplayTimeoutBattery);

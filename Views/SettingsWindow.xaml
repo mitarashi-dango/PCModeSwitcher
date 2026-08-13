@@ -16,6 +16,19 @@
         <TextBlock Text="表示するモード、起動方法、閉じるボタン、切り替えキーを設定します。"
                    Foreground="{StaticResource MutedBrush}" Margin="0,6,0,20"/>
 
+        <TextBlock Text="マイク機能" FontSize="18" FontWeight="SemiBold"
+                   Margin="0,0,0,8"/>
+        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                Background="White" CornerRadius="10" Padding="18" Margin="0,0,0,22">
+          <StackPanel>
+            <CheckBox x:Name="ShowMicrophoneControlsOption"
+                      Content="マイク関連の表示と操作を有効にする"
+                      FontWeight="SemiBold"/>
+            <TextBlock Text="OFFにすると画面とモード編集からマイク項目を隠し、モード適用時もマイクを変更しません。保存済みのマイク設定は保持されます。"
+                       Foreground="{StaticResource MutedBrush}" Margin="24,4,0,0"/>
+          </StackPanel>
+        </Border>
+
         <TextBlock Text="Windowsログイン時の起動" FontSize="18" FontWeight="SemiBold"
                    Margin="0,0,0,8"/>
         <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"

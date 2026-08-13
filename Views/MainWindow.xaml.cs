@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Threading;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.ViewModels;
 
@@ -8,12 +9,19 @@ namespace PCModeSwitcher.Views;
 public partial class MainWindow : Window
 {
     private bool _allowClose;
+    private readonly DispatcherTimer _microphoneStateTimer;
 
     public event EventHandler? HiddenToTray;
 
     public MainWindow()
     {
         InitializeComponent();
+        _microphoneStateTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _microphoneStateTimer.Tick += MicrophoneStateTimer_Tick;
+        _microphoneStateTimer.Start();
     }
 
     public void RestoreFromTray()
@@ -42,6 +50,19 @@ public partial class MainWindow : Window
             await viewModel.RefreshCurrentModeAsync();
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        _microphoneStateTimer.Stop();
+        _microphoneStateTimer.Tick -= MicrophoneStateTimer_Tick;
+        base.OnClosed(e);
+    }
+
+    private void MicrophoneStateTimer_Tick(object? sender, EventArgs e)
+    {
+        if (IsVisible && IsActive && DataContext is MainViewModel viewModel)
+            viewModel.RefreshMicrophoneState();
+    }
+
     protected override void OnClosing(CancelEventArgs e)
     {
         var minimizeToTray = DataContext is not MainViewModel viewModel ||
@@ -68,6 +89,7 @@ public partial class MainWindow : Window
             viewModel.CloseButtonBehavior,
             viewModel.ShowTrayNotification,
             viewModel.StartWithWindows,
+            viewModel.ShowMicrophoneControls,
             viewModel.Hotkeys,
             viewModel.Modes.Select(mode => mode.Mode).ToList(),
             viewModel.VisibleModeIds,
@@ -82,7 +104,8 @@ public partial class MainWindow : Window
             settingsWindow.ShowTrayNotification,
             settingsWindow.StartWithWindows,
             settingsWindow.Hotkeys,
-            settingsWindow.SelectedVisibleModeIds);
+            settingsWindow.SelectedVisibleModeIds,
+            settingsWindow.ShowMicrophoneControls);
         if (!result.IsSuccess)
         {
             MessageBox.Show(

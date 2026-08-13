@@ -1,8 +1,12 @@
-# PC Mode Switcher 0.3.1
+# PC Mode Switcher 0.3.2
 
 PC Mode Switcherは、Windows 11の画面OFF時間、スリープ時間、電源プラン、既定マイクのミュート状態を、GAME / WORK / NORMAL / CUSTOM1〜6の9モードとしてまとめて切り替えるWPFアプリです。アプリ画面には好きな1〜5モードを表示できます（初期状態はGAME / WORK / NORMAL / CUSTOM1 / CUSTOM2）。
 
 各モードのマイク設定は「変更しない」「OFF（ミュート）」「ON（ミュート解除）」から選択でき、既定値は「変更しない」です。
+
+画面右上の「マイク ON / OFF」ボタンでは、Windows側の既定マイクを直接切り替えられます。画面を操作している間は実際の状態を定期的に再確認し、モード適用でマイクだけ失敗した場合も、反映済みの電源設定から「現在のモード」を更新します。マイク本体だけで音声を遮断する物理ミュートはWindowsから確認・解除できないため、ボタンのON表示は物理ミュート解除を保証しません。
+
+マイク機能を使わない場合は、アプリ設定の「マイク関連の表示と操作を有効にする」をOFFにできます。上部ボタン、モードカード、モード編集、通知領域の説明からマイク項目が消え、モード適用時にもマイクを確認・変更しません。保存済みの各モードのマイク設定は保持され、再度ONにすると元どおり利用できます。既定はONです。
 
 Windowsが報告する実際のバッテリー有無を判定し、バッテリー未搭載PCではバッテリー用の画面OFF・スリープ設定を表示せず、適用もしません。保存済みのバッテリー設定値は保持されます。
 
@@ -22,7 +26,7 @@ Windowsが報告する実際のバッテリー有無を判定し、バッテリ�
 dotnet build .\PCModeSwitcher.csproj -c Release
 ```
 
-実行ファイルは通常 `bin\Release\net8.0-windows10.0.22621.0\win-x64\PCModeSwitcher.exe` に作成されます。
+実行ファイルは通常 `bin\Release\net10.0-windows10.0.22621.0\win-x64\PCModeSwitcher.exe` に作成されます。
 
 ## 配布パッケージ
 
@@ -34,7 +38,7 @@ dotnet build .\PCModeSwitcher.csproj -c Release
 
 `artifacts` フォルダーへ次のファイルが作成されます。
 
-- `PCModeSwitcher-v0.3.1-win-x64.zip`
+- `PCModeSwitcher-v0.3.2-win-x64.zip`
 - `SHA256SUMS.txt`
 
 ZIPには実行ファイル、利用者向けREADME、リリースノートが含まれます。コード署名は行っていないため、ダウンロードした環境ではSmartScreenの警告が表示される場合があります。
@@ -55,4 +59,4 @@ ZIPには実行ファイル、利用者向けREADME、リリースノートが�
 dotnet run --project .\tests\PCModeSwitcher.Tests\PCModeSwitcher.Tests.csproj -c Release
 ```
 
-既定モード、JSONの保存と再読み込み、スタートアップ起動引数、多重起動の検出と通知、通知領域向けのモード適用、マイク設定の適用と失敗時復元、バッテリー有無による表示・適用の切り替え、Windows Power APIによる電源プランの読み取りを検証します。実際のWindows設定やマイク状態は変更しません。
+既定モード、JSONの保存と再読み込み、スタートアップ起動引数、多重起動の検出と通知、通知領域向けのモード適用、マイク設定と画面上部ボタンの適用・失敗時復元、一部失敗後の現在モード判定、バッテリー有無による表示・適用の切り替え、Windows Power APIによる電源プランの読み取りを検証します。実際のWindows設定やマイク状態は変更しません。

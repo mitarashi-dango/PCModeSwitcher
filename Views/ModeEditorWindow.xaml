@@ -58,9 +58,11 @@
       <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding PowerPlans}"
                 SelectedItem="{Binding SelectedPowerPlan}" Margin="0,6"/>
 
-      <TextBlock Grid.Row="5" Text="既定のマイク" VerticalAlignment="Center" Margin="0,8"/>
+      <TextBlock Grid.Row="5" Text="既定のマイク" VerticalAlignment="Center" Margin="0,8"
+                 Visibility="{Binding ShowMicrophoneControls, Converter={StaticResource BooleanToVisibilityConverter}}"/>
       <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding MicrophoneChoices}"
-                SelectedItem="{Binding SelectedMicrophoneMute}" Margin="0,6"/>
+                SelectedItem="{Binding SelectedMicrophoneMute}" Margin="0,6"
+                Visibility="{Binding ShowMicrophoneControls, Converter={StaticResource BooleanToVisibilityConverter}}"/>
     </Grid>
 
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">

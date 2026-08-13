@@ -21,7 +21,8 @@ public sealed class MainViewModel : ObservableObject
     private string? _currentModeId;
     private string _currentModeName = "確認中";
     private string _currentModeIcon = "…";
-    private string _statusMessage = "モードを選ぶと、4つの設定をまとめて切り替えます。";
+    private bool? _isMicrophoneOn;
+    private string _statusMessage = "モードを選ぶと、設定をまとめて切り替えます。";
 
     public ObservableCollection<ModeCardViewModel> Modes { get; } = [];
     public ObservableCollection<ModeCardViewModel> VisibleModes { get; } = [];
@@ -36,6 +37,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(IsInteractionEnabled));
             ApplyModeCommand.RaiseCanExecuteChanged();
             EditModeCommand.RaiseCanExecuteChanged();
+            ToggleMicrophoneCommand.RaiseCanExecuteChanged();
         }
     }
     public bool IsInteractionEnabled => !IsBusy;
@@ -54,15 +56,40 @@ public sealed class MainViewModel : ObservableObject
     public string CurrentModeIcon { get => _currentModeIcon; private set => SetProperty(ref _currentModeIcon, value); }
     public bool CurrentModeHasCustomIcon => ModeIconAssets.HasCustomIcon(CurrentModeId);
     public string? CurrentModeCustomIconSource => ModeIconAssets.GetCustomIconSource(CurrentModeId);
+    public bool? IsMicrophoneOn
+    {
+        get => _isMicrophoneOn;
+        private set
+        {
+            if (!SetProperty(ref _isMicrophoneOn, value))
+                return;
+            OnPropertyChanged(nameof(MicrophoneButtonText));
+            OnPropertyChanged(nameof(MicrophoneButtonToolTip));
+        }
+    }
+    public string MicrophoneButtonText => IsMicrophoneOn switch
+    {
+        true => "マイク ON",
+        false => "マイク OFF",
+        null => "マイク ?"
+    };
+    public string MicrophoneButtonToolTip => IsMicrophoneOn switch
+    {
+        true => "Windows側のマイクはONです。クリックするとOFF（ミュート）にします。",
+        false => "Windows側のマイクはOFF（ミュート）です。クリックするとONにします。",
+        null => "Windows側のマイク状態を確認できません。クリックすると再確認します。"
+    };
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
     public CloseButtonBehavior CloseButtonBehavior => _settings.CloseButtonBehavior;
     public bool ShowTrayNotification => _settings.ShowTrayNotification;
     public bool StartWithWindows => _settings.StartWithWindows;
+    public bool ShowMicrophoneControls => _settings.ShowMicrophoneControls;
     public string AppVersion { get; } = GetAppVersion();
     public IReadOnlyList<ModeHotkey> Hotkeys => _settings.Hotkeys.Select(hotkey => hotkey.Copy()).ToList();
     public IReadOnlyList<string> VisibleModeIds => [.. _settings.VisibleModeIds];
     public AsyncRelayCommand ApplyModeCommand { get; }
     public AsyncRelayCommand EditModeCommand { get; }
+    public AsyncRelayCommand ToggleMicrophoneCommand { get; }
 
     public MainViewModel(
         SettingsService settingsService,
@@ -78,6 +105,9 @@ public sealed class MainViewModel : ObservableObject
         _globalHotkeyService = globalHotkeyService;
         ApplyModeCommand = new AsyncRelayCommand(ApplyModeAsync, _ => !IsBusy);
         EditModeCommand = new AsyncRelayCommand(EditModeAsync, _ => !IsBusy);
+        ToggleMicrophoneCommand = new AsyncRelayCommand(
+            _ => ToggleMicrophoneAsync(),
+            _ => !IsBusy && ShowMicrophoneControls);
     }
 
     public async Task InitializeAsync()
@@ -98,6 +128,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(CloseButtonBehavior));
             OnPropertyChanged(nameof(ShowTrayNotification));
             OnPropertyChanged(nameof(StartWithWindows));
+            OnPropertyChanged(nameof(ShowMicrophoneControls));
             OnPropertyChanged(nameof(Hotkeys));
             OnPropertyChanged(nameof(VisibleModeIds));
 
@@ -127,11 +158,19 @@ public sealed class MainViewModel : ObservableObject
 
             var hasBattery = _powerService.HasBattery;
             foreach (var mode in _settings.Modes)
-                Modes.Add(new ModeCardViewModel(mode, GetPowerPlanName, hasBattery));
+            {
+                Modes.Add(new ModeCardViewModel(
+                    mode,
+                    GetPowerPlanName,
+                    hasBattery,
+                    _settings.ShowMicrophoneControls));
+            }
             RebuildVisibleModes();
             var detection = await RefreshCurrentModeCoreAsync();
             if (!detection.IsSuccess)
                 AppendStatusWarning(detection.UserMessage);
+            if (_settings.ShowMicrophoneControls)
+                RefreshMicrophoneStateCore();
         }
         finally
         {
@@ -144,7 +183,8 @@ public sealed class MainViewModel : ObservableObject
         bool showTrayNotification,
         bool startWithWindows,
         IReadOnlyCollection<ModeHotkey> hotkeys,
-        IReadOnlyCollection<string>? visibleModeIds = null)
+        IReadOnlyCollection<string>? visibleModeIds = null,
+        bool? showMicrophoneControls = null)
     {
         if (!Enum.IsDefined(behavior))
             return OperationResult.Failure("閉じるボタンの動作が正しくありません。");
@@ -175,6 +215,7 @@ public sealed class MainViewModel : ObservableObject
         var previousBehavior = _settings.CloseButtonBehavior;
         var previousShowTrayNotification = _settings.ShowTrayNotification;
         var previousStartWithWindows = _settings.StartWithWindows;
+        var previousShowMicrophoneControls = _settings.ShowMicrophoneControls;
         var previousHotkeys = _settings.Hotkeys.Select(hotkey => hotkey.Copy()).ToList();
         var previousVisibleModeIds = _settings.VisibleModeIds.ToList();
 
@@ -198,9 +239,12 @@ public sealed class MainViewModel : ObservableObject
         _settings.CloseButtonBehavior = behavior;
         _settings.ShowTrayNotification = showTrayNotification;
         _settings.StartWithWindows = startWithWindows;
+        _settings.ShowMicrophoneControls =
+            showMicrophoneControls ?? _settings.ShowMicrophoneControls;
         _settings.Hotkeys = newHotkeys;
         _settings.VisibleModeIds = newVisibleModeIds;
         RebuildVisibleModes();
+        RefreshMicrophonePreference();
         NotifyAppPreferencesChanged();
 
         var result = await _settingsService.SaveAsync(_settings);
@@ -209,9 +253,11 @@ public sealed class MainViewModel : ObservableObject
             _settings.CloseButtonBehavior = previousBehavior;
             _settings.ShowTrayNotification = previousShowTrayNotification;
             _settings.StartWithWindows = previousStartWithWindows;
+            _settings.ShowMicrophoneControls = previousShowMicrophoneControls;
             _settings.Hotkeys = previousHotkeys;
             _settings.VisibleModeIds = previousVisibleModeIds;
             RebuildVisibleModes();
+            RefreshMicrophonePreference();
             NotifyAppPreferencesChanged();
 
             var startupRollback = _startupService.SetEnabled(previousStartWithWindows);
@@ -248,8 +294,63 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             var result = await RefreshCurrentModeCoreAsync();
+            if (_settings.ShowMicrophoneControls)
+                RefreshMicrophoneStateCore();
             if (!result.IsSuccess)
                 StatusMessage = result.UserMessage;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public Task ToggleMicrophoneAsync()
+    {
+        if (IsBusy || !_settings.ShowMicrophoneControls)
+            return Task.CompletedTask;
+
+        return ToggleMicrophoneCoreAsync();
+    }
+
+    public void RefreshMicrophoneState()
+    {
+        if (!IsBusy && _settings.ShowMicrophoneControls)
+            RefreshMicrophoneStateCore();
+    }
+
+    private Task ToggleMicrophoneCoreAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            // 表示が古い可能性があるため、クリック時の実際の状態から反転先を決める。
+            var current = RefreshMicrophoneStateCore();
+            if (!current.IsSuccess)
+            {
+                StatusMessage = "⚠ 既定のマイクの状態を確認できないため、切り替えませんでした。";
+                return Task.CompletedTask;
+            }
+
+            var requestedSetting = current.Value
+                ? MicrophoneMuteSetting.Unmute
+                : MicrophoneMuteSetting.Mute;
+            var result = _microphoneMuteService.Apply(requestedSetting);
+            var refreshed = RefreshMicrophoneStateCore();
+            if (!result.IsSuccess)
+            {
+                StatusMessage = $"⚠ {result.UserMessage}";
+            }
+            else if (!refreshed.IsSuccess)
+            {
+                StatusMessage = $"✓ {result.UserMessage} 現在の状態は再確認できませんでした。";
+            }
+            else
+            {
+                StatusMessage = $"✓ マイクを{(refreshed.Value ? "OFF" : "ON")}にしました。";
+            }
+
+            return Task.CompletedTask;
         }
         finally
         {
@@ -275,34 +376,39 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             var powerResult = await _powerService.ApplyModeAsync(card.Mode);
-            var microphoneResult = _microphoneMuteService.Apply(card.Mode.MicrophoneMute);
-            var microphoneDisplayName = GetMicrophoneResultDisplayName(card);
+            var steps = powerResult.Steps.ToList();
+            if (_settings.ShowMicrophoneControls)
+            {
+                var microphoneResult = _microphoneMuteService.Apply(card.Mode.MicrophoneMute);
+                var currentMicrophone = RefreshMicrophoneStateCore();
+                var microphoneDisplayName = GetMicrophoneResultDisplayName(card, currentMicrophone);
+                steps.Add(new ApplyStepResult(
+                    "マイク",
+                    microphoneResult.IsSuccess,
+                    microphoneResult.UserMessage,
+                    microphoneResult.TechnicalDetails,
+                    card.Mode.MicrophoneMute == MicrophoneMuteSetting.NoChange,
+                    microphoneDisplayName));
+            }
+
             var result = new ModeApplyResult
             {
-                Steps =
-                [
-                    .. powerResult.Steps,
-                    new ApplyStepResult(
-                        "マイク",
-                        microphoneResult.IsSuccess,
-                        microphoneResult.UserMessage,
-                        microphoneResult.TechnicalDetails,
-                        card.Mode.MicrophoneMute == MicrophoneMuteSetting.NoChange,
-                        microphoneDisplayName)
-                ]
+                Steps = steps
             };
             StatusMessage = result.ToUserMessage(card.Name);
 
-            if (result.IsSuccess)
+            // マイクなど一部だけ失敗しても、実際に反映された電源設定から表示を更新する。
+            var detection = await RefreshCurrentModeCoreAsync(card.Mode.Id);
+            if (!detection.IsSuccess)
+                AppendStatusWarning(detection.UserMessage);
+
+            if (result.IsSuccess || string.Equals(
+                    CurrentModeId, card.Mode.Id, StringComparison.OrdinalIgnoreCase))
             {
                 _settings.LastAppliedModeId = card.Mode.Id;
                 var save = await _settingsService.SaveAsync(_settings);
                 if (!save.IsSuccess)
-                    StatusMessage += $"{Environment.NewLine}{Environment.NewLine}※ {save.UserMessage}";
-
-                var detection = await RefreshCurrentModeCoreAsync();
-                if (!detection.IsSuccess)
-                    StatusMessage += $"{Environment.NewLine}{Environment.NewLine}※ {detection.UserMessage}";
+                    AppendStatusWarning(save.UserMessage);
             }
 
             return result;
@@ -313,12 +419,13 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private string GetMicrophoneResultDisplayName(ModeCardViewModel card)
+    private static string GetMicrophoneResultDisplayName(
+        ModeCardViewModel card,
+        OperationResult<bool> current)
     {
         if (card.Mode.MicrophoneMute != MicrophoneMuteSetting.NoChange)
             return $"マイク：{card.MicrophoneSummary}";
 
-        var current = _microphoneMuteService.GetCurrentMuted();
         return current.IsSuccess
             ? $"マイク：変更しない（現在：{(current.Value ? "OFF" : "ON")}）"
             : "マイク：変更しない（現在状態を確認できません）";
@@ -333,6 +440,7 @@ public sealed class MainViewModel : ObservableObject
             card.Mode.Copy(),
             PowerPlans.ToList(),
             card.HasBattery,
+            _settings.ShowMicrophoneControls,
             Application.Current.MainWindow);
         if (editor.ShowDialog() != true || editor.EditedMode is null)
             return;
@@ -367,11 +475,11 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private async Task<OperationResult> RefreshCurrentModeCoreAsync()
+    private async Task<OperationResult> RefreshCurrentModeCoreAsync(string? preferredModeId = null)
     {
         var detection = await _powerService.DetectCurrentModeAsync(
             _settings.Modes,
-            _settings.LastAppliedModeId);
+            preferredModeId ?? _settings.LastAppliedModeId);
         if (!detection.IsSuccess || detection.Value is null)
         {
             SetUnconfirmedMode();
@@ -382,6 +490,13 @@ public sealed class MainViewModel : ObservableObject
 
         SetDetectedMode(detection.Value.ModeId);
         return OperationResult.Success();
+    }
+
+    private OperationResult<bool> RefreshMicrophoneStateCore()
+    {
+        var current = _microphoneMuteService.GetCurrentMuted();
+        IsMicrophoneOn = current.IsSuccess ? !current.Value : null;
+        return current;
     }
 
     private void SetDetectedMode(string? modeId)
@@ -421,8 +536,21 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(CloseButtonBehavior));
         OnPropertyChanged(nameof(ShowTrayNotification));
         OnPropertyChanged(nameof(StartWithWindows));
+        OnPropertyChanged(nameof(ShowMicrophoneControls));
         OnPropertyChanged(nameof(Hotkeys));
         OnPropertyChanged(nameof(VisibleModeIds));
+        ToggleMicrophoneCommand.RaiseCanExecuteChanged();
+    }
+
+    private void RefreshMicrophonePreference()
+    {
+        foreach (var mode in Modes)
+            mode.ShowMicrophoneControls = _settings.ShowMicrophoneControls;
+
+        if (_settings.ShowMicrophoneControls)
+            RefreshMicrophoneStateCore();
+        else
+            IsMicrophoneOn = null;
     }
 
     private void RebuildVisibleModes()
