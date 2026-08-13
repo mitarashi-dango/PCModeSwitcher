@@ -113,6 +113,10 @@ public partial class App : Wpf.Application
         if (_mainViewModel is not null)
         {
             _mainViewModel.PropertyChanged -= OnMainViewModelPropertyChanged;
+            foreach (var mode in _mainViewModel.Modes)
+            {
+                mode.PropertyChanged -= OnTrayModePropertyChanged;
+            }
         }
         _mainViewModel = null;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
@@ -129,7 +133,10 @@ public partial class App : Wpf.Application
 
     private void CreateTrayIcon()
     {
-        _trayMenu = new Forms.ContextMenuStrip();
+        _trayMenu = new Forms.ContextMenuStrip
+        {
+            ShowItemToolTips = true
+        };
         var loadingItem = new Forms.ToolStripMenuItem("モードを読み込んでいます…")
         {
             Enabled = false,
@@ -190,13 +197,29 @@ public partial class App : Wpf.Application
             var modeItem = new Forms.ToolStripMenuItem($"{mode.Icon}  {mode.Name}")
             {
                 CheckOnClick = false,
-                Tag = modeId
+                Tag = modeId,
+                ToolTipText = mode.TrayToolTipText
             };
             modeItem.Click += (_, _) => Dispatcher.BeginInvoke(
                 new Action(async () => await ApplyModeFromTrayAsync(modeId)));
             _trayMenu.Items.Insert(insertIndex++, modeItem);
             _trayModeItems[modeId] = modeItem;
+            mode.PropertyChanged += OnTrayModePropertyChanged;
         }
+    }
+
+    private void OnTrayModePropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender is not ModeCardViewModel mode ||
+            e.PropertyName != nameof(ModeCardViewModel.TrayToolTipText) ||
+            !_trayModeItems.TryGetValue(mode.Mode.Id, out var item))
+        {
+            return;
+        }
+
+        item.ToolTipText = mode.TrayToolTipText;
     }
 
     private void RestoreMainWindow()

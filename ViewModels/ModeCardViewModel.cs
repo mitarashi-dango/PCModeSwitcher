@@ -33,6 +33,12 @@ public sealed class ModeCardViewModel : ObservableObject
         MicrophoneMuteSetting.Unmute => "ミュート解除",
         _ => "設定エラー"
     };
+    public string TrayToolTipText => string.Join(
+        Environment.NewLine,
+        $"画面OFF: {DisplaySummary}",
+        $"スリープ: {SleepSummary}",
+        $"電源モード: {PowerPlanName}",
+        $"マイク設定（適用時）: {MicrophoneSummary}");
 
     public void Replace(PcMode mode)
     {
@@ -46,9 +52,14 @@ public sealed class ModeCardViewModel : ObservableObject
         OnPropertyChanged(nameof(SleepSummary));
         OnPropertyChanged(nameof(PowerPlanName));
         OnPropertyChanged(nameof(MicrophoneSummary));
+        OnPropertyChanged(nameof(TrayToolTipText));
     }
 
-    public void RefreshPlanName() => OnPropertyChanged(nameof(PowerPlanName));
+    public void RefreshPlanName()
+    {
+        OnPropertyChanged(nameof(PowerPlanName));
+        OnPropertyChanged(nameof(TrayToolTipText));
+    }
 
     private string FormatSummary(uint acSeconds, uint batterySeconds) => _hasBattery
         ? $"AC {FormatTimeout(acSeconds)} / バッテリー {FormatTimeout(batterySeconds)}"

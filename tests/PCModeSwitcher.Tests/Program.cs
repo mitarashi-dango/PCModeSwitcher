@@ -16,6 +16,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("利用可能な電源プランの読み取り", TestPowerPlanEnumerationAsync),
     ("Windows設定からの現在モード自動判定", TestCurrentModeDetectionAsync),
     ("バッテリー有無による表示と適用の切り替え", TestBatteryAwareBehaviorAsync),
+    ("通知領域モードの説明と編集時更新", TestTrayModeToolTipAsync),
     ("電源3設定の一括適用", TestModeApplyAsync),
     ("マイクミュート設定の適用と復元", TestMicrophoneMuteAsync),
     ("モードの4設定一括適用", TestModeMicrophoneIntegrationAsync),
@@ -552,6 +553,43 @@ static async Task TestBatteryAwareBehaviorAsync()
         "バッテリーなしPCでDC画面OFF時間が変更されました。");
     Assert(policy.GetValue(PowerSettingsService.SleepTimeoutId, PowerSource.Dc) == originalSleepDc,
         "バッテリーなしPCでDCスリープ時間が変更されました。");
+}
+
+static Task TestTrayModeToolTipAsync()
+{
+    var mode = CreateTestMode(Guid.NewGuid());
+    var planName = "テストプラン";
+    var card = new ModeCardViewModel(mode, _ => planName, true);
+    var expected = string.Join(
+        Environment.NewLine,
+        "画面OFF: AC 5分 / バッテリー 2分",
+        "スリープ: AC 15分 / バッテリー 10分",
+        "電源モード: テストプラン",
+        "マイク設定（適用時）: 変更しない");
+    Assert(card.TrayToolTipText == expected,
+        "通知領域のモード説明に4設定が正しく表示されていません。");
+
+    var toolTipChanged = false;
+    card.PropertyChanged += (_, args) =>
+    {
+        if (args.PropertyName == nameof(ModeCardViewModel.TrayToolTipText))
+            toolTipChanged = true;
+    };
+
+    var editedMode = mode.Copy();
+    editedMode.MicrophoneMute = MicrophoneMuteSetting.Mute;
+    card.Replace(editedMode);
+    Assert(toolTipChanged && card.TrayToolTipText.EndsWith(
+            "マイク設定（適用時）: ミュート", StringComparison.Ordinal),
+        "モード編集後に通知領域の説明が更新されていません。");
+
+    toolTipChanged = false;
+    planName = "高パフォーマンス";
+    card.RefreshPlanName();
+    Assert(toolTipChanged && card.TrayToolTipText.Contains(
+            "電源モード: 高パフォーマンス", StringComparison.Ordinal),
+        "電源プラン名の更新が通知領域の説明へ反映されていません。");
+    return Task.CompletedTask;
 }
 
 static async Task TestPartialFailureRollbackAsync()

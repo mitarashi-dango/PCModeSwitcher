@@ -98,6 +98,8 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "docs\DISTRIBUTION_README.md") `
     -Destination (Join-Path $packageDirectory "README.md")
 Copy-Item -LiteralPath $releaseNotesPath `
     -Destination (Join-Path $packageDirectory "RELEASE_NOTES.md")
+Copy-Item -LiteralPath (Join-Path $projectRoot "Assets\FluentEmojiHighContrast\THIRD-PARTY-NOTICE.txt") `
+    -Destination (Join-Path $packageDirectory "THIRD-PARTY-NOTICE.txt")
 
 Compress-Archive -LiteralPath $packageDirectory -DestinationPath $zipPath -CompressionLevel Optimal
 
