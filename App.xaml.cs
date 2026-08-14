@@ -22,8 +22,10 @@ public partial class App : Wpf.Application
     private MainViewModel? _mainViewModel;
     private SingleInstanceCoordinator? _singleInstanceCoordinator;
     private GlobalHotkeyService? _globalHotkeyService;
+    private ModeEngine? _modeEngine;
     private bool _trayHintShown;
     private bool _isWindowHiddenToTray;
+    private Forms.ToolStripMenuItem? _restoreTrayItem;
 
     protected override async void OnStartup(Wpf.StartupEventArgs e)
     {
@@ -39,10 +41,11 @@ public partial class App : Wpf.Application
 
         ShutdownMode = Wpf.ShutdownMode.OnMainWindowClose;
 
+        LocalizationService.LanguageChanged += OnLanguageChanged;
         DispatcherUnhandledException += (_, args) =>
         {
             Wpf.MessageBox.Show(
-                "予期しない問題が発生しました。操作を中止しました。",
+                LocalizationService.Translate("予期しない問題が発生しました。操作を中止しました。"),
                 "PC Mode Switcher",
                 Wpf.MessageBoxButton.OK,
                 Wpf.MessageBoxImage.Error);
@@ -54,12 +57,14 @@ public partial class App : Wpf.Application
         var microphoneMuteService = new MicrophoneMuteService();
         var startupService = new StartupService();
         _globalHotkeyService = new GlobalHotkeyService();
+        _modeEngine = new ModeEngine();
         var viewModel = new MainViewModel(
             settingsService,
             powerService,
             microphoneMuteService,
             startupService,
-            _globalHotkeyService);
+            _globalHotkeyService,
+            _modeEngine);
         var window = new MainWindow { DataContext = viewModel };
         _mainWindow = window;
         _mainViewModel = viewModel;
@@ -82,7 +87,9 @@ public partial class App : Wpf.Application
         }
 
         await viewModel.InitializeAsync();
+        await HandleIncompleteSessionAsync(viewModel);
         CreateTrayModeItems();
+        viewModel.Modes.CollectionChanged += OnModesCollectionChanged;
         UpdateTrayModeState();
         UpdateTrayIconVisibility(viewModel.CloseButtonBehavior);
     }
@@ -110,15 +117,20 @@ public partial class App : Wpf.Application
             _globalHotkeyService = null;
         }
 
+        _modeEngine?.Dispose();
+        _modeEngine = null;
+
         if (_mainViewModel is not null)
         {
             _mainViewModel.PropertyChanged -= OnMainViewModelPropertyChanged;
+            _mainViewModel.Modes.CollectionChanged -= OnModesCollectionChanged;
             foreach (var mode in _mainViewModel.Modes)
             {
                 mode.PropertyChanged -= OnTrayModePropertyChanged;
             }
         }
         _mainViewModel = null;
+        LocalizationService.LanguageChanged -= OnLanguageChanged;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
 
         if (_singleInstanceCoordinator is not null)
@@ -137,20 +149,35 @@ public partial class App : Wpf.Application
         {
             ShowItemToolTips = true
         };
-        var loadingItem = new Forms.ToolStripMenuItem("モードを読み込んでいます…")
+        var loadingItem = new Forms.ToolStripMenuItem(LocalizationService.Get("Tray.Loading"))
         {
             Enabled = false,
             Tag = "loading"
         };
-        var showItem = new Forms.ToolStripMenuItem("表示");
+        var showItem = new Forms.ToolStripMenuItem(LocalizationService.Get("Tray.Show")) { Tag = "show" };
         showItem.Click += (_, _) => Dispatcher.Invoke(RestoreMainWindow);
 
-        var exitItem = new Forms.ToolStripMenuItem("終了");
-        exitItem.Click += (_, _) => Dispatcher.Invoke(ExitApplication);
+        _restoreTrayItem = new Forms.ToolStripMenuItem(LocalizationService.Get("Common.Restore")) { Enabled = false, Tag = "restore" };
+        _restoreTrayItem.Click += (_, _) => Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            if (_mainViewModel is not null) await _mainViewModel.RestoreModeAsync();
+        }));
+
+        var settingsItem = new Forms.ToolStripMenuItem(LocalizationService.Get("Tray.OpenSettings")) { Tag = "settings" };
+        settingsItem.Click += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            RestoreMainWindow();
+            _mainWindow?.OpenSettings();
+        }));
+
+        var exitItem = new Forms.ToolStripMenuItem(LocalizationService.Get("Tray.Exit")) { Tag = "exit" };
+        exitItem.Click += (_, _) => Dispatcher.BeginInvoke(new Action(async () => await ExitApplicationAsync()));
 
         _trayMenu.Items.Add(loadingItem);
         _trayMenu.Items.Add(new Forms.ToolStripSeparator { Tag = "mode-separator" });
         _trayMenu.Items.Add(showItem);
+        _trayMenu.Items.Add(_restoreTrayItem);
+        _trayMenu.Items.Add(settingsItem);
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(exitItem);
 
@@ -239,7 +266,53 @@ public partial class App : Wpf.Application
 
     private void OnHotkeyPressed(object? sender, ModeHotkeyPressedEventArgs e)
     {
-        Dispatcher.BeginInvoke(new Action(async () => await ApplyModeFromTrayAsync(e.ModeId)));
+        Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            if (string.Equals(e.ModeId, "restore", StringComparison.OrdinalIgnoreCase))
+                await _mainViewModel?.RestoreModeAsync()!;
+            else
+                await ApplyModeFromTrayAsync(e.ModeId);
+        }));
+    }
+
+    private static async Task HandleIncompleteSessionAsync(MainViewModel viewModel)
+    {
+        var incomplete = await viewModel.GetIncompleteSessionAsync();
+        if (!incomplete.IsSuccess)
+        {
+            Wpf.MessageBox.Show(incomplete.UserMessage, "PC Mode Switcher",
+                Wpf.MessageBoxButton.OK, Wpf.MessageBoxImage.Warning);
+            return;
+        }
+        if (incomplete.Value is null ||
+            (!incomplete.Value.IsApplying && !incomplete.Value.IsAwaitingRestore)) return;
+
+        var choice = Wpf.MessageBox.Show(
+            LocalizationService.Get("Dialog.IncompleteSession"),
+            LocalizationService.Get("Dialog.IncompleteSessionTitle"),
+            Wpf.MessageBoxButton.YesNoCancel,
+            Wpf.MessageBoxImage.Warning,
+            Wpf.MessageBoxResult.Yes);
+        if (choice == Wpf.MessageBoxResult.Yes)
+        {
+            await viewModel.RestoreModeAsync();
+        }
+        else if (choice == Wpf.MessageBoxResult.No)
+        {
+            Wpf.MessageBox.Show(
+                LocalizationService.Format(
+                    "Dialog.IncompleteDetails",
+                    incomplete.Value.ModeName,
+                    incomplete.Value.StartedUtc.LocalDateTime.ToString("G"),
+                    incomplete.Value.Actions.Count),
+                LocalizationService.Get("Dialog.PreviousModeSettings"),
+                Wpf.MessageBoxButton.OK,
+                Wpf.MessageBoxImage.Information);
+        }
+        else
+        {
+            viewModel.IgnoreIncompleteSession();
+        }
     }
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
@@ -263,8 +336,20 @@ public partial class App : Wpf.Application
         }
     }
 
-    private void ExitApplication()
+    private async Task ExitApplicationAsync()
     {
+        if (_mainViewModel?.HasActiveSession == true)
+        {
+            var choice = Wpf.MessageBox.Show(
+                LocalizationService.Get("Dialog.ActiveExit"),
+                "PC Mode Switcher",
+                Wpf.MessageBoxButton.YesNoCancel,
+                Wpf.MessageBoxImage.Warning,
+                Wpf.MessageBoxResult.Yes);
+            if (choice == Wpf.MessageBoxResult.No) return;
+            if (choice == Wpf.MessageBoxResult.Yes)
+                await _mainViewModel.RestoreModeAsync();
+        }
         _mainWindow?.AllowClose();
         Shutdown();
     }
@@ -288,7 +373,7 @@ public partial class App : Wpf.Application
         _trayIcon.ShowBalloonTip(
             3000,
             "PC Mode Switcher",
-            "通知領域に格納しました。ダブルクリックで表示、右クリックの［終了］で終了できます。",
+            LocalizationService.Get("Tray.MinimizedHint"),
             Forms.ToolTipIcon.Info);
     }
 
@@ -313,19 +398,37 @@ public partial class App : Wpf.Application
         }
 
         var title = result.IsSuccess
-            ? $"{mode.Name}モードに切り替えました"
+            ? LocalizationService.Format("Status.ModeApplied", mode.Name)
             : result.Steps.Any(step => step.IsSuccess && !step.IsSkipped)
-                ? $"{mode.Name}モードを一部適用しました"
-                : $"{mode.Name}モードを適用できませんでした";
+                ? LocalizationService.Format("Status.ModePartiallyApplied", mode.Name)
+                : LocalizationService.Format("Status.ModeFailed", mode.Name);
         var message = result.IsSuccess
-            ? "モードに登録された設定を適用しました。"
+            ? LocalizationService.Get("Tray.AppliedSettings")
             : string.Join("\n", result.Steps.Select(step =>
-                $"{(step.IsSkipped ? "–" : step.IsSuccess ? "✓" : "×")} {step.Name}"));
+                $"{(step.IsSkipped ? "–" : step.IsSuccess ? "✓" : "×")} {LocalizationService.Translate(step.DisplayName ?? step.Name)}"));
         _trayIcon.ShowBalloonTip(
             4000,
             title,
             message,
             result.IsSuccess ? Forms.ToolTipIcon.Info : Forms.ToolTipIcon.Warning);
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        if (_trayMenu is null)
+            return;
+        foreach (Forms.ToolStripItem item in _trayMenu.Items)
+        {
+            item.Text = item.Tag switch
+            {
+                "loading" => LocalizationService.Get("Tray.Loading"),
+                "show" => LocalizationService.Get("Tray.Show"),
+                "restore" => LocalizationService.Get("Common.Restore"),
+                "settings" => LocalizationService.Get("Tray.OpenSettings"),
+                "exit" => LocalizationService.Get("Tray.Exit"),
+                _ => item.Text
+            };
+        }
     }
 
     private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -342,6 +445,11 @@ public partial class App : Wpf.Application
         else if (e.PropertyName is nameof(MainViewModel.CurrentModeId) or nameof(MainViewModel.IsBusy))
         {
             UpdateTrayModeState();
+        }
+        else if (e.PropertyName == nameof(MainViewModel.HasActiveSession))
+        {
+            if (_restoreTrayItem is not null)
+                _restoreTrayItem.Enabled = _mainViewModel.HasActiveSession && !_mainViewModel.IsBusy;
         }
     }
 
@@ -367,6 +475,25 @@ public partial class App : Wpf.Application
                 ? "PC Mode Switcher"
                 : $"PC Mode Switcher - {_mainViewModel.CurrentModeName}";
         }
+        if (_restoreTrayItem is not null)
+            _restoreTrayItem.Enabled = _mainViewModel.HasActiveSession && !_mainViewModel.IsBusy;
+    }
+
+    private void OnModesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        foreach (var item in _trayModeItems.Values)
+        {
+            if (item.Tag is string id)
+            {
+                var oldMode = _mainViewModel?.Modes.FirstOrDefault(mode => mode.Mode.Id == id);
+                if (oldMode is not null) oldMode.PropertyChanged -= OnTrayModePropertyChanged;
+            }
+            _trayMenu?.Items.Remove(item);
+            item.Dispose();
+        }
+        _trayModeItems.Clear();
+        CreateTrayModeItems();
+        UpdateTrayModeState();
     }
 
     internal static bool IsStartupLaunch(IEnumerable<string> arguments) =>

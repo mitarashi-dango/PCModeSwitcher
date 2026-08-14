@@ -24,6 +24,15 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("マイク失敗時も現在モードを実設定から更新", TestModeDetectionAfterMicrophoneFailureAsync),
     ("モード適用結果の表示", TestModeApplyResultDisplayAsync),
     ("途中失敗時の復元と結果表示", TestPartialFailureRollbackAsync)
+    ,("モードを削除せず画面から非表示", TestHideModeAsync)
+    ,("複製・新規モードだけを完全削除", TestDeleteAddedModeAsync)
+    ,("5モード表示順の並べ替え保存", TestVisibleModeReorderAsync)
+    ,("追加モードへ午〜亥アイコンを順番に割り当て", TestAdditionalCustomIconsAsync)
+    ,("トランザクション適用と逆順復元", TestTransactionalModeEngineAsync)
+    ,("破損JSONの退避", TestCorruptedSettingsQuarantineAsync)
+    ,("動的モードのエクスポートとインポート", TestProfileExportImportAsync)
+    ,("元に戻すショートカットの重複検出", TestRestoreHotkeyConflictAsync),
+    ("英語・繁体字と既定言語の保存", TestLocalizationAsync)
 };
 
 var failures = new List<string>();
@@ -59,6 +68,24 @@ static Task TestDefaultModesAsync()
         "既定モードの並びが正しくありません。");
     Assert(settings.Modes[0].DisplayTimeoutAc == 0 && settings.Modes[0].SleepTimeoutAc == 0,
         "GAMEの既定タイムアウトが正しくありません。");
+    var game = settings.Modes.Single(mode => mode.Id == "game");
+    Assert(game.Power.PowerPlanId == PowerSettingsService.BalancedSchemeId &&
+           game.Power.AcPowerMode == WindowsPowerMode.BestPerformance &&
+           game.Power.DcPowerMode == WindowsPowerMode.BestPerformance &&
+           game.Power.SleepPrevention == SleepPreventionMode.SystemAndDisplay,
+        "GAMEの性能優先設定が正しくありません。");
+    var work = settings.Modes.Single(mode => mode.Id == "work");
+    Assert(work.Power.AcPowerMode == WindowsPowerMode.Balanced &&
+           work.Power.DcPowerMode == WindowsPowerMode.BestEfficiency &&
+           work.DisplayTimeoutAc == 10 * 60 && work.DisplayTimeoutBattery == 5 * 60 &&
+           work.SleepTimeoutAc == 30 * 60 && work.SleepTimeoutBattery == 15 * 60,
+        "WORKの作業向け設定が正しくありません。");
+    var normal = settings.Modes.Single(mode => mode.Id == "normal");
+    Assert(normal.Power.AcPowerMode == WindowsPowerMode.Balanced &&
+           normal.Power.DcPowerMode == WindowsPowerMode.BestEfficiency &&
+           normal.DisplayTimeoutAc == 5 * 60 && normal.DisplayTimeoutBattery == 3 * 60 &&
+           normal.SleepTimeoutAc == 15 * 60 && normal.SleepTimeoutBattery == 10 * 60,
+        "NORMALの普段使い設定が正しくありません。");
     Assert(settings.CloseButtonBehavior == CloseButtonBehavior.MinimizeToTray,
         "閉じるボタンの既定動作が通知領域への格納ではありません。");
     Assert(!settings.ShowTrayNotification,
@@ -715,10 +742,10 @@ static async Task TestBatteryAwareBehaviorAsync()
     Assert(!desktopService.HasBattery, "バッテリーなしPCがバッテリーありとして判定されました。");
 
     var desktopCard = new ModeCardViewModel(mode, _ => "テストプラン", false);
-    Assert(desktopCard.DisplaySummary == $"AC {ModeCardViewModel.FormatTimeout(mode.DisplayTimeoutAc)}",
-        "バッテリーなしPCの画面OFF概要がAC設定だけになっていません。");
-    Assert(desktopCard.SleepSummary == $"AC {ModeCardViewModel.FormatTimeout(mode.SleepTimeoutAc)}",
-        "バッテリーなしPCのスリープ概要がAC設定だけになっていません。");
+    Assert(desktopCard.DisplaySummary == $"電源接続時 {ModeCardViewModel.FormatTimeout(mode.DisplayTimeoutAc)}",
+        "バッテリーなしPCの画面OFF概要が電源接続時の設定だけになっていません。");
+    Assert(desktopCard.SleepSummary == $"電源接続時 {ModeCardViewModel.FormatTimeout(mode.SleepTimeoutAc)}",
+        "バッテリーなしPCのスリープ概要が電源接続時の設定だけになっていません。");
 
     var result = await desktopService.ApplyModeAsync(mode);
     Assert(result.IsSuccess, result.ToUserMessage(mode.Name));
@@ -735,8 +762,8 @@ static Task TestTrayModeToolTipAsync()
     var card = new ModeCardViewModel(mode, _ => planName, true);
     var expected = string.Join(
         Environment.NewLine,
-        "画面OFF: AC 5分 / バッテリー 2分",
-        "スリープ: AC 15分 / バッテリー 10分",
+        "画面OFF: 電源接続時 5分 / バッテリー 2分",
+        "スリープ: 電源接続時 15分 / バッテリー 10分",
         "電源モード: テストプラン",
         "マイク設定（適用時）: 変更しない");
     Assert(card.TrayToolTipText == expected,
@@ -808,10 +835,390 @@ static PCModeSwitcher.Models.PcMode CreateTestMode(Guid planId) => new()
     PowerPlanId = planId
 };
 
+static async Task TestVisibleModeReorderAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.ReorderModeTests.{Guid.NewGuid():N}");
+    try
+    {
+        var service = new SettingsService(directory);
+        var viewModel = new MainViewModel(
+            service,
+            new PowerSettingsService(new FakePowerPolicyAccessor(PowerSettingsService.BalancedSchemeId), () => false),
+            new FakeMicrophoneMuteService(),
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService());
+        await viewModel.InitializeAsync();
+
+        var reorder = await viewModel.ReorderVisibleModeAsync("custom1", "custom2", true);
+        Assert(reorder.IsSuccess, $"5モード表示時に並べ替えできませんでした: {reorder.UserMessage}");
+        var expected = new[] { "game", "work", "normal", "custom2", "custom1" };
+        Assert(viewModel.VisibleModeIds.SequenceEqual(expected, StringComparer.OrdinalIgnoreCase) &&
+               viewModel.VisibleModes.Select(card => card.Mode.Id).SequenceEqual(expected, StringComparer.OrdinalIgnoreCase),
+            "並べ替えた順序がアプリ画面へ反映されていません。");
+        Assert(viewModel.AllProfiles.Select(mode => mode.Id).Take(5).SequenceEqual(
+                new[] { "game", "work", "normal", "custom1", "custom2" },
+                StringComparer.OrdinalIgnoreCase),
+            "表示順の変更でモード本体の登録順まで変わりました。");
+
+        var loaded = await service.LoadAsync();
+        Assert(loaded.IsSuccess && loaded.Value?.VisibleModeIds.SequenceEqual(
+                expected,
+                StringComparer.OrdinalIgnoreCase) == true,
+            "並べ替えた表示順が設定へ保存されていません。");
+
+        var restore = await viewModel.ReorderVisibleModeAsync("custom1", "custom2", false);
+        Assert(restore.IsSuccess && viewModel.VisibleModeIds.SequenceEqual(
+                new[] { "game", "work", "normal", "custom1", "custom2" },
+                StringComparer.OrdinalIgnoreCase),
+            "Custom1をCustom2の前へ戻せませんでした。");
+        Assert(!(await viewModel.ReorderVisibleModeAsync("custom3", "game", false)).IsSuccess,
+            "画面にないモードを表示順へ混ぜられてしまいました。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static async Task TestHideModeAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.HideModeTests.{Guid.NewGuid():N}");
+    try
+    {
+        var service = new SettingsService(directory);
+        var viewModel = new MainViewModel(
+            service,
+            new PowerSettingsService(new FakePowerPolicyAccessor(PowerSettingsService.BalancedSchemeId), () => false),
+            new FakeMicrophoneMuteService(),
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService());
+        await viewModel.InitializeAsync();
+
+        var hide = await viewModel.HideModeAsync("work");
+        Assert(hide.IsSuccess, $"WORKを非表示にできませんでした: {hide.UserMessage}");
+        Assert(viewModel.Modes.Any(mode => mode.Mode.Id == "work") &&
+               viewModel.AllProfiles.Any(mode => mode.Id == "work"),
+            "非表示操作でWORKのモード設定が削除されました。");
+        Assert(viewModel.VisibleModes.All(mode => mode.Mode.Id != "work"),
+            "非表示にしたWORKがアプリ画面へ残っています。");
+
+        var loaded = await service.LoadAsync();
+        Assert(loaded.IsSuccess && loaded.Value?.Modes.Any(mode => mode.Id == "work") == true,
+            "非表示後の保存データからWORKが削除されました。");
+        Assert(loaded.Value?.VisibleModeIds.Contains("work", StringComparer.OrdinalIgnoreCase) == false,
+            "非表示にしたWORKが表示対象として保存されています。");
+
+        foreach (var modeId in new[] { "game", "normal", "custom1" })
+            Assert((await viewModel.HideModeAsync(modeId)).IsSuccess, $"{modeId}を非表示にできませんでした。");
+        Assert(!(await viewModel.HideModeAsync("custom2")).IsSuccess,
+            "最後の表示モードまで非表示にできてしまいました。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static async Task TestDeleteAddedModeAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.DeleteAddedModeTests.{Guid.NewGuid():N}");
+    try
+    {
+        var service = new SettingsService(directory);
+        var viewModel = new MainViewModel(
+            service,
+            new PowerSettingsService(new FakePowerPolicyAccessor(PowerSettingsService.BalancedSchemeId), () => false),
+            new FakeMicrophoneMuteService(),
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService());
+        await viewModel.InitializeAsync();
+
+        var duplicate = await viewModel.DuplicateModeAsync("game");
+        Assert(duplicate.IsSuccess, $"モードを複製できませんでした: {duplicate.UserMessage}");
+        var addedMode = viewModel.AllProfiles.Single(mode => !SettingsService.IsBuiltInModeId(mode.Id));
+
+        var rejectBuiltIn = await viewModel.SetAppPreferencesAsync(
+            viewModel.CloseButtonBehavior,
+            viewModel.ShowTrayNotification,
+            viewModel.StartWithWindows,
+            viewModel.Hotkeys,
+            viewModel.VisibleModeIds,
+            viewModel.ShowMicrophoneControls,
+            viewModel.RestoreHotkey,
+            viewModel.AllProfiles.Where(mode => mode.IsEnabled).Select(mode => mode.Id).ToList(),
+            ["game"]);
+        Assert(!rejectBuiltIn.IsSuccess && viewModel.AllProfiles.Any(mode => mode.Id == "game"),
+            "標準モードを完全削除できてしまいました。");
+
+        var delete = await viewModel.SetAppPreferencesAsync(
+            viewModel.CloseButtonBehavior,
+            viewModel.ShowTrayNotification,
+            viewModel.StartWithWindows,
+            viewModel.Hotkeys.Where(hotkey => !string.Equals(
+                hotkey.ModeId, addedMode.Id, StringComparison.OrdinalIgnoreCase)).ToList(),
+            viewModel.VisibleModeIds.Where(id => !string.Equals(
+                id, addedMode.Id, StringComparison.OrdinalIgnoreCase)).ToList(),
+            viewModel.ShowMicrophoneControls,
+            viewModel.RestoreHotkey,
+            viewModel.AllProfiles.Where(mode => mode.IsEnabled && !string.Equals(
+                mode.Id, addedMode.Id, StringComparison.OrdinalIgnoreCase)).Select(mode => mode.Id).ToList(),
+            [addedMode.Id]);
+        Assert(delete.IsSuccess, $"追加モードを完全削除できませんでした: {delete.UserMessage}");
+        Assert(viewModel.AllProfiles.All(mode => !string.Equals(
+                   mode.Id, addedMode.Id, StringComparison.OrdinalIgnoreCase)) &&
+               viewModel.Hotkeys.All(hotkey => !string.Equals(
+                   hotkey.ModeId, addedMode.Id, StringComparison.OrdinalIgnoreCase)),
+            "追加モード本体またはショートカットが残っています。");
+
+        var loaded = await service.LoadAsync();
+        Assert(loaded.IsSuccess && loaded.Value is not null &&
+               loaded.Value.Modes.All(mode => !string.Equals(
+                   mode.Id, addedMode.Id, StringComparison.OrdinalIgnoreCase)) &&
+               loaded.Value.Hotkeys.All(hotkey => !string.Equals(
+                   hotkey.ModeId, addedMode.Id, StringComparison.OrdinalIgnoreCase)),
+            "保存データに完全削除した追加モードが残っています。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+static async Task TestAdditionalCustomIconsAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.CustomIconTests.{Guid.NewGuid():N}");
+    try
+    {
+        var viewModel = new MainViewModel(
+            new SettingsService(directory),
+            new PowerSettingsService(new FakePowerPolicyAccessor(PowerSettingsService.BalancedSchemeId), () => false),
+            new FakeMicrophoneMuteService(),
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService());
+        await viewModel.InitializeAsync();
+
+        var expected = new (string Id, string Icon)[]
+        {
+            ("custom7", "\U0001F434\uFE0E"),
+            ("custom8", "\U0001F411\uFE0E"),
+            ("custom9", "\U0001F412\uFE0E"),
+            ("custom10", "\U0001F413\uFE0E"),
+            ("custom11", "\U0001F415\uFE0E"),
+            ("custom12", "\U0001F417\uFE0E")
+        };
+        foreach (var item in expected)
+        {
+            var mode = viewModel.CreateNewMode();
+            Assert(mode.Id == item.Id && mode.Icon == item.Icon,
+                $"追加モードへ{item.Id}の十二支アイコンが割り当てられませんでした。");
+            Assert(ModeIconAssets.HasCustomIcon(mode.Id) &&
+                   ModeIconAssets.GetCustomIconSource(mode.Id)?.EndsWith($"{char.ToUpperInvariant(item.Id[0])}{item.Id[1..]}Icon.png", StringComparison.Ordinal) == true,
+                $"{item.Id}の画像素材が登録されていません。");
+            mode.Name = item.Id.ToUpperInvariant();
+            Assert((await viewModel.AddModeAsync(mode)).IsSuccess, $"{item.Id}を追加できませんでした。");
+        }
+
+        var fallback = viewModel.CreateNewMode();
+        Assert(fallback.Id.StartsWith("user-", StringComparison.Ordinal) && fallback.Icon == "●",
+            "13個目以降のモードが汎用アイコンへフォールバックしませんでした。");
+        Assert(!ModeIconAssets.HasCustomIcon(fallback.Id),
+            "汎用モードへ存在しない専用画像が割り当てられました。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
 static void Assert(bool condition, string message)
 {
     if (!condition)
         throw new InvalidOperationException(message);
+}
+
+static async Task TestTransactionalModeEngineAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.EngineTests.{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var calls = new List<string>();
+        var handlers = new IModeActionHandler[]
+        {
+            new FakeModeActionHandler("first", calls),
+            new FakeModeActionHandler("second", calls, failApply: true),
+            new FakeModeActionHandler("third", calls)
+        };
+        var paths = new AppPaths(directory);
+        using var engine = new ModeEngine(
+            handlers,
+            new SessionStore(paths),
+            new AppLogger(paths),
+            new ProcessMonitorService());
+        var mode = SettingsService.CreateUserMode("テスト");
+        var apply = await engine.ApplyAsync(mode);
+        Assert(!apply.IsSuccess, "一部失敗が成功として扱われました。");
+        Assert(calls.Where(value => value.StartsWith("apply:", StringComparison.Ordinal))
+                .SequenceEqual(["apply:first", "apply:second", "apply:third"]),
+            "一つの適用失敗後に残りのアクションが続行されていません。");
+        Assert(File.Exists(paths.ActiveSessionPath), "適用後のactive-session.jsonがありません。");
+        var persisted = await new SessionStore(paths).LoadAsync();
+        Assert(persisted.IsSuccess && persisted.Value?.Actions.Count == 3 &&
+               persisted.Value.Actions.All(action => action.StateCaptured),
+            "アクションスナップショットが保存されていません。");
+
+        var restore = await engine.RestoreAsync();
+        Assert(restore.IsSuccess, "復元に失敗しました。");
+        Assert(calls.Where(value => value.StartsWith("restore:", StringComparison.Ordinal))
+                .SequenceEqual(["restore:third", "restore:second", "restore:first"]),
+            "アクションが逆順に復元されていません。");
+        Assert(!File.Exists(paths.ActiveSessionPath), "正常復元後にactive-session.jsonが残っています。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static async Task TestCorruptedSettingsQuarantineAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.CorruptTests.{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var settingsPath = Path.Combine(directory, "settings.json");
+        await File.WriteAllTextAsync(settingsPath, "{ this is not json");
+        var result = await new SettingsService(directory).LoadAsync();
+        Assert(!result.IsSuccess, "破損JSONが正常な設定として読み込まれました。");
+        Assert(!File.Exists(settingsPath), "破損JSONが元のファイル名のまま残っています。");
+        Assert(Directory.EnumerateFiles(Path.Combine(directory, "Backups"), "corrupt-settings-*.json").Count() == 1,
+            "破損JSONがバックアップフォルダーへ退避されていません。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static async Task TestProfileExportImportAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.ImportTests.{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var service = new SettingsService(directory);
+        var settings = SettingsService.CreateDefaults();
+        var custom = SettingsService.CreateUserMode("配信用");
+        custom.Audio.Output.VolumePercent = 35;
+        settings.Modes.Add(custom);
+        settings.Hotkeys.Add(new ModeHotkey { ModeId = custom.Id });
+        var exportPath = Path.Combine(directory, "profiles.json");
+        Assert((await service.ExportProfilesAsync(exportPath, settings)).IsSuccess,
+            "プロファイルをエクスポートできませんでした。");
+        var imported = await service.ImportProfilesAsync(exportPath, SettingsService.CreateDefaults());
+        Assert(imported.IsSuccess && imported.Value is not null, "プロファイルをインポートできませんでした。");
+        var importedSettings = imported.Value ?? throw new InvalidOperationException("インポート結果がありません。");
+        var restored = importedSettings.Modes.Single(mode => mode.Name == "配信用");
+        Assert(restored.Audio.Output.VolumePercent == 35 && restored.Id == custom.Id,
+            "動的モードの構造化設定がインポートで保持されていません。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static Task TestRestoreHotkeyConflictAsync()
+{
+    var hotkeys = SettingsService.CreateDefaultHotkeys();
+    hotkeys[0].Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt;
+    hotkeys[0].VirtualKey = 0x47;
+    var restore = new ModeHotkey
+    {
+        ModeId = "restore",
+        Modifiers = hotkeys[0].Modifiers,
+        VirtualKey = hotkeys[0].VirtualKey
+    };
+    Assert(!HotkeyValidator.Validate(hotkeys.Append(restore).ToList()).IsSuccess,
+        "モードと元に戻すへ同じショートカットを割り当てられました。");
+    restore.VirtualKey = 0x7B;
+    Assert(!HotkeyValidator.Validate(hotkeys.Append(restore).ToList()).IsSuccess,
+        "元に戻すへF12を割り当てられました。");
+    return Task.CompletedTask;
+}
+
+static async Task TestLocalizationAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher-localization-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(directory);
+    try
+    {
+        var settings = SettingsService.CreateDefaults();
+        Assert(settings.Language == AppLanguages.System,
+            "新規設定の表示言語が既定値ではありません。");
+        settings.Language = AppLanguages.TraditionalChinese;
+        var service = new SettingsService(directory);
+        Assert((await service.SaveAsync(settings)).IsSuccess,
+            "繁体字設定を保存できませんでした。");
+        var loaded = await service.LoadAsync();
+        Assert(loaded.IsSuccess && loaded.Value?.Language == AppLanguages.TraditionalChinese,
+            "表示言語が再読み込み後に保持されていません。");
+
+        LocalizationService.SetLanguage(AppLanguages.English);
+        Assert(LocalizationService.Get("Settings.Title") == "App settings",
+            "英語UIを読み込めませんでした。");
+        Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
+               "Mode settings could not be saved.",
+            "英語の結果メッセージへ切り替わりませんでした。");
+        var card = new ModeCardViewModel(
+            settings.Modes[0], _ => "Balanced", hasBattery: false);
+        Assert(card.DisplaySummary.StartsWith("Plugged in", StringComparison.Ordinal),
+            "英語のカード要約へ切り替わりませんでした。");
+
+        LocalizationService.SetLanguage(AppLanguages.TraditionalChinese);
+        Assert(LocalizationService.Get("Settings.Title") == "應用程式設定",
+            "繁体字UIを読み込めませんでした。");
+        Assert(card.DisplaySummary.StartsWith("插入電源", StringComparison.Ordinal),
+            "繁体字のカード要約へ切り替わりませんでした。");
+        Assert(LocalizationService.Normalize("invalid") == AppLanguages.System,
+            "不正な表示言語が既定値へ戻りませんでした。");
+    }
+    finally
+    {
+        LocalizationService.SetLanguage(AppLanguages.Japanese);
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+sealed class FakeModeActionHandler(
+    string id,
+    List<string> calls,
+    bool failApply = false) : IModeActionHandler
+{
+    public string Id => id;
+    public string DisplayName => id;
+    public Task<ActionPreflightResult> PreflightAsync(ModeActionContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(ActionPreflightResult.Ready());
+    public Task<ActionCaptureResult> CaptureAsync(ModeActionContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(ActionCaptureResult.Success(new { id }));
+    public Task<ActionExecutionResult> ApplyAsync(ModeActionContext context, ActionSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        calls.Add($"apply:{id}");
+        return Task.FromResult(new ActionExecutionResult
+        {
+            ActionId = id, DisplayName = id,
+            Status = failApply ? ActionExecutionStatus.ApplyFailed : ActionExecutionStatus.Succeeded,
+            Message = failApply ? "テスト用失敗" : "成功"
+        });
+    }
+    public Task<ActionExecutionResult> RestoreAsync(ModeActionContext context, ActionSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        calls.Add($"restore:{id}");
+        return Task.FromResult(new ActionExecutionResult
+        {
+            ActionId = id, DisplayName = id,
+            Status = ActionExecutionStatus.RestoreSucceeded,
+            Message = "復元成功"
+        });
+    }
 }
 
 sealed class FakePowerPolicyAccessor : IPowerPolicyAccessor

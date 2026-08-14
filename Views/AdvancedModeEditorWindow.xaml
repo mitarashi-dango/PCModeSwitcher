@@ -1,0 +1,81 @@
+<Window x:Class="PCModeSwitcher.Views.AdvancedModeEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:PCModeSwitcher.Services"
+        Title="{loc:Loc Editor.Title}" Width="940" Height="760" MinWidth="820" MinHeight="650"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/></Window.Resources>
+  <Grid Margin="22">
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <TabControl>
+      <TabItem Header="{loc:Loc Advanced.Basic}">
+        <Grid Margin="18">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock Text="{loc:Loc Advanced.ModeName}" Margin="0,9"/><TextBox Grid.Column="1" Text="{Binding ModeName, UpdateSourceTrigger=PropertyChanged}" Margin="0,5"/>
+          <TextBlock Grid.Row="1" Text="{loc:Loc Advanced.Icon}" Margin="0,9"/><TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ModeIcon}" Margin="0,5"/>
+          <TextBlock Grid.Row="2" Text="{loc:Loc Advanced.Status}" Margin="0,9"/><CheckBox Grid.Row="2" Grid.Column="1" Content="{loc:Loc Advanced.EnableMode}" IsChecked="{Binding IsModeEnabled}" Margin="0,8"/>
+          <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,22,0,0" TextWrapping="Wrap"
+                     Foreground="{StaticResource MutedBrush}" Text="{loc:Loc Advanced.RestoreDescription}"/>
+        </Grid>
+      </TabItem>
+      <TabItem Header="{loc:Loc Advanced.Power}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><Grid Margin="18">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="340"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <CheckBox Grid.ColumnSpan="2" Content="{loc:Loc Advanced.ChangePowerPlan}" IsChecked="{Binding ChangePowerPlan}" Margin="0,8"/>
+          <TextBlock Grid.Row="1" Text="{loc:Loc Advanced.PowerPlan}" Margin="0,9"/><ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding PowerPlans}" SelectedItem="{Binding SelectedPowerPlan}" Margin="0,5"/>
+          <TextBlock Grid.Row="2" Text="{loc:Loc Advanced.PowerModeAc}" Margin="0,9"/><ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding PowerModes}" SelectedItem="{Binding AcPowerMode}" Margin="0,5"/>
+          <TextBlock Grid.Row="3" Text="{loc:Loc Advanced.PowerModeBattery}" Margin="0,9" Visibility="{Binding HasBattery,Converter={StaticResource BoolVisibility}}"/><ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding PowerModes}" SelectedItem="{Binding DcPowerMode}" Margin="0,5" Visibility="{Binding HasBattery,Converter={StaticResource BoolVisibility}}"/>
+          <TextBlock Grid.Row="4" Text="{loc:Loc Advanced.DisplayTimeout}" Margin="0,9"/><StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal"><ComboBox Width="180" ItemsSource="{Binding TimeoutChoices}" SelectedItem="{Binding DisplayAc}"/><ComboBox Width="180" Margin="8,0,0,0" ItemsSource="{Binding TimeoutChoices}" SelectedItem="{Binding DisplayDc}" Visibility="{Binding HasBattery,Converter={StaticResource BoolVisibility}}"/></StackPanel>
+          <TextBlock Grid.Row="5" Text="{loc:Loc Advanced.SleepTimeout}" Margin="0,9"/><StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal"><ComboBox Width="180" ItemsSource="{Binding TimeoutChoices}" SelectedItem="{Binding SleepAc}"/><ComboBox Width="180" Margin="8,0,0,0" ItemsSource="{Binding TimeoutChoices}" SelectedItem="{Binding SleepDc}" Visibility="{Binding HasBattery,Converter={StaticResource BoolVisibility}}"/></StackPanel>
+          <TextBlock Grid.Row="6" Text="{loc:Loc Advanced.SleepPrevention}" Margin="0,9"/><ComboBox Grid.Row="6" Grid.Column="1" ItemsSource="{Binding SleepPreventions}" SelectedItem="{Binding SleepPrevention}" Margin="0,5"/>
+          <TextBlock Grid.Row="7" Grid.ColumnSpan="2" Margin="0,16,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Text="{loc:Loc Advanced.PowerRestoreDescription}"/>
+        </Grid></ScrollViewer>
+      </TabItem>
+      <TabItem Header="{loc:Loc Advanced.Display}">
+        <StackPanel Margin="18">
+          <TextBlock Text="{loc:Loc Advanced.TargetMonitor}"/><ComboBox ItemsSource="{Binding Displays}" SelectedItem="{Binding SelectedDisplay}" DisplayMemberPath="FriendlyName" Margin="0,5,0,14"/>
+          <TextBlock Text="{loc:Loc Advanced.RefreshRate}"/>
+          <ComboBox ItemsSource="{Binding RefreshRates}" SelectedItem="{Binding SelectedRefreshRate}" Margin="0,5,0,12"><ComboBox.ItemTemplate><DataTemplate><TextBlock><Run Text="{Binding}"/><Run Text=" Hz"/></TextBlock></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+          <StackPanel Orientation="Horizontal"><Button Content="{loc:Loc Advanced.TestRefreshRate}" Click="TestDisplay_Click"/><TextBlock Text="{Binding DisplayTrustText}" Margin="16,8"/></StackPanel>
+          <TextBlock Margin="0,18,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Text="{loc:Loc Advanced.RefreshRateDescription}"/>
+        </StackPanel>
+      </TabItem>
+      <TabItem Header="{loc:Loc Advanced.Sound}">
+        <Grid Margin="18">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="{loc:Loc Advanced.OutputVolume}" Margin="0,9"/><TextBox Grid.Column="1" Text="{Binding OutputVolume}" Margin="0,5" ToolTip="{loc:Loc Advanced.BlankNoChange}"/>
+          <TextBlock Grid.Row="1" Text="{loc:Loc Advanced.OutputMute}" Margin="0,9"/><ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding MuteChoices}" SelectedItem="{Binding OutputMute}" Margin="0,5"/>
+          <TextBlock Grid.Row="2" Text="{loc:Loc Advanced.MicrophoneVolume}" Margin="0,9"/><TextBox Grid.Row="2" Grid.Column="1" Text="{Binding MicrophoneVolume}" Margin="0,5" ToolTip="{loc:Loc Advanced.BlankNoChange}"/>
+          <TextBlock Grid.Row="3" Text="{loc:Loc Advanced.MicrophoneMute}" Margin="0,9"/><ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding MuteChoices}" SelectedItem="{Binding MicrophoneMute}" Margin="0,5"/>
+        </Grid>
+      </TabItem>
+      <TabItem Header="{loc:Loc Advanced.Apps}">
+        <Grid Margin="12">
+          <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <DataGrid ItemsSource="{Binding LaunchItems}" SelectedItem="{Binding SelectedLaunchItem}" AutoGenerateColumns="False" CanUserAddRows="False">
+            <DataGrid.Columns><DataGridTextColumn Header="{loc:Loc Advanced.LaunchTarget}" Binding="{Binding Target}" Width="2*"/><DataGridTextColumn Header="{loc:Loc Advanced.LaunchArguments}" Binding="{Binding Arguments}" Width="*"/><DataGridTextColumn Header="{loc:Loc Advanced.WorkingDirectory}" Binding="{Binding WorkingDirectory}" Width="*"/><DataGridTextColumn Header="{loc:Loc Advanced.Delay}" Binding="{Binding DelayMilliseconds}" Width="70"/><DataGridTextColumn Header="{loc:Loc Advanced.Order}" Binding="{Binding Order}" Width="50"/><DataGridCheckBoxColumn Header="{loc:Loc Advanced.AdditionalInstance}" Binding="{Binding AllowAdditionalInstance}"/><DataGridCheckBoxColumn Header="{loc:Loc Advanced.CloseOnRestore}" Binding="{Binding CloseOnRestore}"/></DataGrid.Columns>
+          </DataGrid>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5"><Button Content="{loc:Loc Advanced.AddExecutable}" Click="AddLaunch_Click"/><Button Content="{loc:Loc Advanced.AddLink}" Click="AddUri_Click"/><Button Content="{loc:Loc Common.DeleteSelection}" Click="RemoveLaunch_Click"/></StackPanel>
+          <DataGrid Grid.Row="2" ItemsSource="{Binding CloseRules}" SelectedItem="{Binding SelectedCloseRule}" AutoGenerateColumns="False" CanUserAddRows="False">
+            <DataGrid.Columns><DataGridTextColumn Header="{loc:Loc Advanced.CloseTarget}" Binding="{Binding ExecutablePath}" Width="2*"/><DataGridTextColumn Header="{loc:Loc Advanced.GracePeriod}" Binding="{Binding GracePeriodSeconds}" Width="60"/><DataGridCheckBoxColumn Header="{loc:Loc Advanced.AllowForceKill}" Binding="{Binding AllowForceKill}"/><DataGridCheckBoxColumn Header="{loc:Loc Advanced.RestartOnRestore}" Binding="{Binding RestartOnRestore}"/><DataGridTextColumn Header="{loc:Loc Advanced.RestartArguments}" Binding="{Binding RestartArguments}" Width="*"/><DataGridTextColumn Header="{loc:Loc Advanced.RestartDirectory}" Binding="{Binding RestartWorkingDirectory}" Width="*"/></DataGrid.Columns>
+          </DataGrid>
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,5"><Button Content="{loc:Loc Advanced.AddCloseTarget}" Click="AddClose_Click"/><Button Content="{loc:Loc Common.DeleteSelection}" Click="RemoveClose_Click"/></StackPanel>
+          <DataGrid Grid.Row="4" ItemsSource="{Binding MonitorRules}" SelectedItem="{Binding SelectedMonitorRule}" AutoGenerateColumns="False" CanUserAddRows="False"><DataGrid.Columns><DataGridTextColumn Header="{loc:Loc Advanced.MonitorTarget}" Binding="{Binding ExecutablePathOrName}" Width="*"/></DataGrid.Columns></DataGrid>
+          <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,5"><Button Content="{loc:Loc Advanced.AddMonitorTarget}" Click="AddMonitor_Click"/><Button Content="{loc:Loc Common.DeleteSelection}" Click="RemoveMonitor_Click"/></StackPanel>
+        </Grid>
+      </TabItem>
+      <TabItem Header="{loc:Loc Advanced.Windows}">
+        <StackPanel Margin="18"><Button Content="{loc:Loc Advanced.CaptureWindows}" Click="CaptureWindows_Click" HorizontalAlignment="Left"/><TextBlock Text="{Binding WindowSummary}" Margin="0,14"/><TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Text="{loc:Loc Advanced.WindowDescription}"/></StackPanel>
+      </TabItem>
+    </TabControl>
+    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0"><Button Content="{loc:Loc Common.Cancel}" IsCancel="True"/><Button Content="{loc:Loc Common.Save}" Style="{StaticResource PrimaryButtonStyle}" Click="Save_Click" IsDefault="True"/></StackPanel>
+  </Grid>
+</Window>

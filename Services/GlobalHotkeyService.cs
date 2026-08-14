@@ -72,8 +72,8 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService, IDisposable
         return rollback.IsSuccess
             ? result
             : OperationResult.Failure(
-                $"{result.UserMessage} 以前のショートカットも復元できませんでした。",
-                $"登録: {result.TechnicalDetails}{Environment.NewLine}復元: {rollback.TechnicalDetails}");
+                LocalizationService.Format("Hotkey.RollbackFailed", result.UserMessage),
+                $"登録: {result.TechnicalDetails}{Environment.NewLine}元に戻す: {rollback.TechnicalDetails}");
     }
 
     public void Dispose()
@@ -124,7 +124,7 @@ public sealed class GlobalHotkeyService : IGlobalHotkeyService, IDisposable
             {
                 var error = new Win32Exception(Marshal.GetLastWin32Error());
                 return OperationResult.Failure(
-                    $"{HotkeyValidator.GetModeName(hotkey.ModeId)}のショートカット「{HotkeyValidator.Format(hotkey)}」を登録できませんでした。他のアプリやWindowsで使用されていない組み合わせを選んでください。",
+                    LocalizationService.Format("Hotkey.RegistrationFailed", HotkeyValidator.GetModeName(hotkey.ModeId), HotkeyValidator.Format(hotkey)),
                     error.Message);
             }
 

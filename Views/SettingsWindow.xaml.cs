@@ -11,17 +11,24 @@ namespace PCModeSwitcher.Views;
 public partial class SettingsWindow : Window
 {
     private readonly Dictionary<string, ModeHotkey> _hotkeys;
+    private readonly HashSet<string> _deletedModeIds = new(StringComparer.OrdinalIgnoreCase);
     private bool _isRevertingVisibleSelection;
 
     public CloseButtonBehavior SelectedBehavior { get; private set; }
     public bool ShowTrayNotification { get; private set; }
     public bool StartWithWindows { get; private set; }
     public bool ShowMicrophoneControls { get; private set; }
+    public string SelectedLanguage { get; private set; } = AppLanguages.System;
     public ObservableCollection<ModeSettingsItem> ModeItems { get; } = [];
     public IReadOnlyList<ModeHotkey> Hotkeys =>
-        ModeItems.Select(item => _hotkeys[item.Id].Copy()).ToList();
+        _hotkeys.Values.Where(value => !string.Equals(value.ModeId, "restore", StringComparison.OrdinalIgnoreCase))
+            .Select(value => value.Copy()).ToList();
+    public ModeHotkey RestoreHotkey => _hotkeys["restore"].Copy();
     public IReadOnlyList<string> SelectedVisibleModeIds =>
-        ModeItems.Where(item => item.IsVisible).Select(item => item.Id).ToList();
+        ModeItems.Where(item => item.IsModeEnabled && item.IsVisible).Select(item => item.Id).ToList();
+    public IReadOnlyList<string> SelectedEnabledModeIds =>
+        ModeItems.Where(item => item.IsModeEnabled).Select(item => item.Id).ToList();
+    public IReadOnlyList<string> DeletedModeIds => _deletedModeIds.ToList();
 
     public SettingsWindow(
         CloseButtonBehavior currentBehavior,
@@ -31,6 +38,8 @@ public partial class SettingsWindow : Window
         IReadOnlyCollection<ModeHotkey> hotkeys,
         IReadOnlyCollection<PcMode> modes,
         IReadOnlyCollection<string> visibleModeIds,
+        ModeHotkey restoreHotkey,
+        string language,
         Window owner)
     {
         InitializeComponent();
@@ -39,8 +48,11 @@ public partial class SettingsWindow : Window
         ShowTrayNotification = showTrayNotification;
         StartWithWindows = startWithWindows;
         ShowMicrophoneControls = showMicrophoneControls;
-        _hotkeys = SettingsService.CreateDefaultHotkeys()
-            .ToDictionary(hotkey => hotkey.ModeId, StringComparer.OrdinalIgnoreCase);
+        SelectedLanguage = LocalizationService.Normalize(language);
+        _hotkeys = modes.ToDictionary(
+            mode => mode.Id,
+            mode => new ModeHotkey { ModeId = mode.Id },
+            StringComparer.OrdinalIgnoreCase);
         foreach (var hotkey in hotkeys)
         {
             if (_hotkeys.ContainsKey(hotkey.ModeId))
@@ -48,17 +60,26 @@ public partial class SettingsWindow : Window
                 _hotkeys[hotkey.ModeId] = hotkey.Copy();
             }
         }
+        _hotkeys["restore"] = restoreHotkey.Copy();
+        _hotkeys["restore"].ModeId = "restore";
 
-        foreach (var modeId in SettingsService.SupportedModeIds)
+        var modesById = modes.ToDictionary(mode => mode.Id, StringComparer.OrdinalIgnoreCase);
+        var visibleModeIdSet = visibleModeIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var orderedModes = visibleModeIds
+            .Where(modesById.ContainsKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(modeId => modesById[modeId])
+            .Concat(modes.Where(mode => !visibleModeIdSet.Contains(mode.Id)));
+        foreach (var mode in orderedModes)
         {
-            var mode = modes.First(value =>
-                string.Equals(value.Id, modeId, StringComparison.OrdinalIgnoreCase));
             ModeItems.Add(new ModeSettingsItem(
                 mode.Id,
                 mode.Name,
                 mode.Icon,
-                visibleModeIds.Contains(mode.Id, StringComparer.OrdinalIgnoreCase),
-                HotkeyValidator.Format(_hotkeys[mode.Id])));
+                mode.IsEnabled,
+                visibleModeIdSet.Contains(mode.Id),
+                HotkeyValidator.Format(_hotkeys[mode.Id]),
+                !SettingsService.IsBuiltInModeId(mode.Id)));
         }
 
         MinimizeToTrayOption.IsChecked = currentBehavior == CloseButtonBehavior.MinimizeToTray;
@@ -66,6 +87,7 @@ public partial class SettingsWindow : Window
         ShowTrayNotificationOption.IsChecked = showTrayNotification;
         StartWithWindowsOption.IsChecked = startWithWindows;
         ShowMicrophoneControlsOption.IsChecked = showMicrophoneControls;
+        LanguageOption.SelectedValue = SelectedLanguage;
         UpdateHotkeyTextBoxes();
     }
 
@@ -153,6 +175,39 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void DeleteMode_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string modeId } ||
+            ModeItems.FirstOrDefault(item => string.Equals(
+                item.Id,
+                modeId,
+                StringComparison.OrdinalIgnoreCase)) is not { CanDelete: true } item)
+        {
+            return;
+        }
+
+        if (MessageBox.Show(
+                LocalizationService.Format("Dialog.DeleteMode", item.Name),
+                LocalizationService.Get("Dialog.DeleteModeTitle"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        ModeItems.Remove(item);
+        _hotkeys.Remove(item.Id);
+        _deletedModeIds.Add(item.Id);
+        if (ModeItems.All(mode => !mode.IsVisible))
+        {
+            var replacement = ModeItems.FirstOrDefault(mode => mode.IsModeEnabled);
+            if (replacement is not null)
+                replacement.IsVisible = true;
+        }
+        HideModeSelectionValidation();
+        HideShortcutValidation();
+    }
     private void ClearHotkey(string modeId)
     {
         _hotkeys[modeId] = new ModeHotkey { ModeId = modeId };
@@ -165,6 +220,11 @@ public partial class SettingsWindow : Window
         if (SelectedVisibleModeIds.Count is < 1 or > SettingsService.MaximumVisibleModeCount)
         {
             ShowModeSelectionValidation("アプリ画面に表示するモードは1〜5個で選んでください。");
+            return;
+        }
+        if (SelectedEnabledModeIds.Count == 0)
+        {
+            ShowModeSelectionValidation("有効なモードを1個以上選んでください。");
             return;
         }
 
@@ -181,6 +241,7 @@ public partial class SettingsWindow : Window
         ShowTrayNotification = ShowTrayNotificationOption.IsChecked == true;
         StartWithWindows = StartWithWindowsOption.IsChecked == true;
         ShowMicrophoneControls = ShowMicrophoneControlsOption.IsChecked == true;
+        SelectedLanguage = LanguageOption.SelectedValue as string ?? AppLanguages.System;
         DialogResult = true;
     }
 
@@ -188,11 +249,12 @@ public partial class SettingsWindow : Window
     {
         foreach (var item in ModeItems)
             item.HotkeyText = HotkeyValidator.Format(_hotkeys[item.Id]);
+        RestoreHotkeyText.Text = HotkeyValidator.Format(_hotkeys["restore"]);
     }
 
     private void ShowModeSelectionValidation(string message)
     {
-        ModeSelectionValidationMessage.Text = message;
+        ModeSelectionValidationMessage.Text = LocalizationService.Translate(message);
         ModeSelectionValidationMessage.Visibility = Visibility.Visible;
     }
 
@@ -204,7 +266,7 @@ public partial class SettingsWindow : Window
 
     private void ShowShortcutValidation(string message)
     {
-        ShortcutValidationMessage.Text = message;
+        ShortcutValidationMessage.Text = LocalizationService.Translate(message);
         ShortcutValidationMessage.Visibility = Visibility.Visible;
     }
 
@@ -238,31 +300,46 @@ public partial class SettingsWindow : Window
 public sealed class ModeSettingsItem : ObservableObject
 {
     private bool _isVisible;
+    private bool _isModeEnabled;
     private string _hotkeyText;
 
     public ModeSettingsItem(
         string id,
         string name,
         string icon,
+        bool isModeEnabled,
         bool isVisible,
-        string hotkeyText)
+        string hotkeyText,
+        bool canDelete)
     {
         Id = id;
         Name = name;
         Icon = icon;
+        _isModeEnabled = isModeEnabled;
         _isVisible = isVisible;
         _hotkeyText = hotkeyText;
+        CanDelete = canDelete;
     }
 
     public string Id { get; }
     public string Name { get; }
     public string Icon { get; }
+    public bool CanDelete { get; }
     public bool HasCustomIcon => ModeIconAssets.HasCustomIcon(Id);
     public string? CustomIconSource => ModeIconAssets.GetCustomIconSource(Id);
     public bool IsVisible
     {
         get => _isVisible;
         set => SetProperty(ref _isVisible, value);
+    }
+    public bool IsModeEnabled
+    {
+        get => _isModeEnabled;
+        set
+        {
+            if (!SetProperty(ref _isModeEnabled, value)) return;
+            if (!value) IsVisible = false;
+        }
     }
     public string HotkeyText
     {

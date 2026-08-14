@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using PCModeSwitcher.Models;
+using PCModeSwitcher.Services;
 
 namespace PCModeSwitcher.Views;
 
@@ -16,9 +17,9 @@ public partial class ModeEditorWindow : Window
     public ObservableCollection<PowerPlan> PowerPlans { get; }
     public ObservableCollection<MicrophoneMuteChoice> MicrophoneChoices { get; } =
     [
-        new(MicrophoneMuteSetting.NoChange, "変更しない"),
-        new(MicrophoneMuteSetting.Mute, "OFF（ミュート）"),
-        new(MicrophoneMuteSetting.Unmute, "ON（ミュート解除）")
+        new(MicrophoneMuteSetting.NoChange, LocalizationService.Get("Common.NoChange")),
+        new(MicrophoneMuteSetting.Mute, "OFF"),
+        new(MicrophoneMuteSetting.Unmute, "ON")
     ];
     public TimeoutChoice? DisplayAc { get; set; }
     public TimeoutChoice? DisplayBattery { get; set; }
@@ -57,7 +58,7 @@ public partial class ModeEditorWindow : Window
             SleepBattery is null || SelectedPowerPlan is null || SelectedMicrophoneMute is null)
         {
             MessageBox.Show(
-                "すべての設定を選択してください。",
+                LocalizationService.Translate("すべての設定を選択してください。"),
                 "PC Mode Switcher",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -90,9 +91,9 @@ public partial class ModeEditorWindow : Window
             (uint)value * 60u,
             value switch
             {
-                0 => "なし",
-                60 => "1時間",
-                120 => "2時間",
-                _ => $"{value}分"
+                0 => LocalizationService.Get("Common.None"),
+                60 => LocalizationService.Get("Choice.OneHour"),
+                120 => LocalizationService.Get("Choice.TwoHours"),
+                _ => LocalizationService.Format("Card.Minutes", value)
             })));
 }

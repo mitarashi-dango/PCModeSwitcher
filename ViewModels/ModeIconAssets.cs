@@ -13,6 +13,12 @@ public static class ModeIconAssets
         "custom4" => "/Assets/FluentEmojiHighContrast/Custom4Icon.png",
         "custom5" => "/Assets/FluentEmojiHighContrast/Custom5Icon.png",
         "custom6" => "/Assets/FluentEmojiHighContrast/Custom6Icon.png",
+        "custom7" => "/Assets/FluentEmojiHighContrast/Custom7Icon.png",
+        "custom8" => "/Assets/FluentEmojiHighContrast/Custom8Icon.png",
+        "custom9" => "/Assets/FluentEmojiHighContrast/Custom9Icon.png",
+        "custom10" => "/Assets/FluentEmojiHighContrast/Custom10Icon.png",
+        "custom11" => "/Assets/FluentEmojiHighContrast/Custom11Icon.png",
+        "custom12" => "/Assets/FluentEmojiHighContrast/Custom12Icon.png",
         _ => null
     };
 }

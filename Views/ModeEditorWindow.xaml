@@ -1,7 +1,8 @@
 <Window x:Class="PCModeSwitcher.Views.ModeEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="モード設定" Width="620" Height="680"
+        xmlns:loc="clr-namespace:PCModeSwitcher.Services"
+        Title="{loc:Loc Editor.Title}" Width="620" Height="680"
         ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
   <Window.Resources>
@@ -16,7 +17,7 @@
 
     <StackPanel>
       <TextBlock Text="{Binding ModeName}" FontSize="28" FontWeight="SemiBold"/>
-      <TextBlock Text="このモードを適用したときの設定を選びます。"
+      <TextBlock Text="{loc:Loc Editor.Description}"
                  Foreground="{StaticResource MutedBrush}" Margin="0,4,0,22"/>
     </StackPanel>
 
@@ -34,31 +35,31 @@
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
 
-      <TextBlock Grid.Row="0" Text="画面OFF（電源接続時）" VerticalAlignment="Center" Margin="0,8"/>
+      <TextBlock Grid.Row="0" Text="{loc:Loc Editor.DisplayAc}" VerticalAlignment="Center" Margin="0,8"/>
       <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding DisplayChoices}"
                 SelectedItem="{Binding DisplayAc}" Margin="0,6"/>
 
-      <TextBlock Grid.Row="1" Text="画面OFF（バッテリー）" VerticalAlignment="Center" Margin="0,8"
+      <TextBlock Grid.Row="1" Text="{loc:Loc Editor.DisplayBattery}" VerticalAlignment="Center" Margin="0,8"
                  Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
       <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding DisplayChoices}"
                 SelectedItem="{Binding DisplayBattery}" Margin="0,6"
                 Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
-      <TextBlock Grid.Row="2" Text="スリープ（電源接続時）" VerticalAlignment="Center" Margin="0,8"/>
+      <TextBlock Grid.Row="2" Text="{loc:Loc Editor.SleepAc}" VerticalAlignment="Center" Margin="0,8"/>
       <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding SleepChoices}"
                 SelectedItem="{Binding SleepAc}" Margin="0,6"/>
 
-      <TextBlock Grid.Row="3" Text="スリープ（バッテリー）" VerticalAlignment="Center" Margin="0,8"
+      <TextBlock Grid.Row="3" Text="{loc:Loc Editor.SleepBattery}" VerticalAlignment="Center" Margin="0,8"
                  Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
       <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding SleepChoices}"
                 SelectedItem="{Binding SleepBattery}" Margin="0,6"
                 Visibility="{Binding HasBattery, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
-      <TextBlock Grid.Row="4" Text="電源モード" VerticalAlignment="Center" Margin="0,8"/>
+      <TextBlock Grid.Row="4" Text="{loc:Loc Editor.PowerMode}" VerticalAlignment="Center" Margin="0,8"/>
       <ComboBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding PowerPlans}"
                 SelectedItem="{Binding SelectedPowerPlan}" Margin="0,6"/>
 
-      <TextBlock Grid.Row="5" Text="既定のマイク" VerticalAlignment="Center" Margin="0,8"
+      <TextBlock Grid.Row="5" Text="{loc:Loc Editor.DefaultMicrophone}" VerticalAlignment="Center" Margin="0,8"
                  Visibility="{Binding ShowMicrophoneControls, Converter={StaticResource BooleanToVisibilityConverter}}"/>
       <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding MicrophoneChoices}"
                 SelectedItem="{Binding SelectedMicrophoneMute}" Margin="0,6"
@@ -66,8 +67,8 @@
     </Grid>
 
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
-      <Button Content="キャンセル" IsCancel="True"/>
-      <Button Content="保存" Style="{StaticResource PrimaryButtonStyle}" Click="Save_Click" IsDefault="True"/>
+      <Button Content="{loc:Loc Common.Cancel}" IsCancel="True"/>
+      <Button Content="{loc:Loc Common.Save}" Style="{StaticResource PrimaryButtonStyle}" Click="Save_Click" IsDefault="True"/>
     </StackPanel>
   </Grid>
 </Window>

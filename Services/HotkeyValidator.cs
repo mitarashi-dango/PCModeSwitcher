@@ -11,15 +11,10 @@ public static class HotkeyValidator
         HotkeyModifiers.Shift |
         HotkeyModifiers.Windows;
 
-    private static readonly string[] ModeIds =
-        ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"];
-
     public static OperationResult Validate(IReadOnlyCollection<ModeHotkey> hotkeys)
     {
-        if (hotkeys.Count != ModeIds.Length ||
-            hotkeys.Select(hotkey => hotkey.ModeId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != ModeIds.Length ||
-            ModeIds.Any(modeId => !hotkeys.Any(hotkey =>
-                string.Equals(hotkey.ModeId, modeId, StringComparison.OrdinalIgnoreCase))))
+        if (hotkeys.Any(hotkey => string.IsNullOrWhiteSpace(hotkey.ModeId)) ||
+            hotkeys.Select(hotkey => hotkey.ModeId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != hotkeys.Count)
         {
             return OperationResult.Failure("ショートカットのモード構成が正しくありません。");
         }
@@ -34,7 +29,7 @@ public static class HotkeyValidator
             if (hasUnsupportedModifier || (!isEmpty && !isComplete))
             {
                 return OperationResult.Failure(
-                    $"{GetModeName(hotkey.ModeId)}のショートカットが正しくありません。");
+                    LocalizationService.Format("Hotkey.Invalid", GetModeName(hotkey.ModeId)));
             }
 
             // F12はWindowsのデバッガー用に常時予約されているため登録できない。
@@ -51,7 +46,7 @@ public static class HotkeyValidator
         if (duplicate is not null)
         {
             return OperationResult.Failure(
-                $"同じショートカット「{Format(duplicate.First())}」を複数のモードには設定できません。");
+                LocalizationService.Format("Hotkey.Duplicate", Format(duplicate.First())));
         }
 
         return OperationResult.Success();
@@ -61,7 +56,7 @@ public static class HotkeyValidator
     {
         if (!hotkey.IsConfigured)
         {
-            return "未設定";
+            return LocalizationService.Translate("未設定");
         }
 
         var parts = new List<string>();
