@@ -6,6 +6,8 @@ using System.Text.Json;
 var tests = new List<(string Name, Func<Task> Run)>
 {
     ("既定の9モードと5モード表示", TestDefaultModesAsync),
+    ("GAME uses the II-controller image", TestGameModeIconAssetAsync),
+    ("Tray prioritizes the main screen mode order", TestTrayModeOrderAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
     ("スタートアップ起動引数の判定", TestStartupLaunchArgumentAsync),
@@ -107,6 +109,26 @@ static Task TestDefaultModesAsync()
         "ショートカットの既定値が未設定ではありません。");
     Assert(settings.VisibleModeIds.SequenceEqual(["game", "work", "normal", "custom1", "custom2"]),
         "初期表示モードが5個ではありません。");
+    return Task.CompletedTask;
+}
+
+static Task TestGameModeIconAssetAsync()
+{
+    Assert(ModeIconAssets.HasCustomIcon("game"),
+        "GAME is not registered as an image icon.");
+    Assert(ModeIconAssets.GetCustomIconSource("GAME") == "/Assets/GameModeIcon.png",
+        "GAME does not reference the II-controller image.");
+    return Task.CompletedTask;
+}
+
+static Task TestTrayModeOrderAsync()
+{
+    var order = PCModeSwitcher.App.BuildTrayModeOrder(
+        ["game", "work", "normal", "custom1", "custom2"],
+        ["work", "normal", "game", "custom1", "custom2", "custom3", "custom4"]);
+    Assert(order.SequenceEqual(
+            ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4"]),
+        "Tray mode order did not prioritize the main screen order.");
     return Task.CompletedTask;
 }
 

@@ -7,6 +7,7 @@ public static class ModeIconAssets
 
     public static string? GetCustomIconSource(string? modeId) => modeId?.ToLowerInvariant() switch
     {
+        "game" => "/Assets/GameModeIcon.png",
         "custom1" => "/Assets/FluentEmojiHighContrast/Custom1Icon.png",
         "custom2" => "/Assets/FluentEmojiHighContrast/Custom2Icon.png",
         "custom3" => "/Assets/FluentEmojiHighContrast/Custom3Icon.png",

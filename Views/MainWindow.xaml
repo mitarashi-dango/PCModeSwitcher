@@ -70,7 +70,7 @@
           <Border Background="#243047" CornerRadius="12" Padding="18,10">
             <StackPanel Orientation="Horizontal">
               <Grid Width="58" Height="30" VerticalAlignment="Center">
-                <Image Source="/Assets/GameModeIcon.png" Stretch="Uniform">
+                <Image Source="{Binding CurrentModeCustomIconSource}" Stretch="Uniform">
                   <Image.Style>
                     <Style TargetType="Image">
                       <Setter Property="Visibility" Value="Collapsed"/>
@@ -82,11 +82,23 @@
                     </Style>
                   </Image.Style>
                 </Image>
-                <Rectangle Fill="White"
-                           Visibility="{Binding CurrentModeHasCustomIcon, Converter={StaticResource BoolToVisibility}}">
+                <Rectangle Fill="White">
                   <Rectangle.OpacityMask>
                     <ImageBrush ImageSource="{Binding CurrentModeCustomIconSource}" Stretch="Uniform"/>
                   </Rectangle.OpacityMask>
+                  <Rectangle.Style>
+                    <Style TargetType="Rectangle">
+                      <Setter Property="Visibility" Value="Collapsed"/>
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding CurrentModeHasCustomIcon}" Value="True">
+                          <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
+                          <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Rectangle.Style>
                 </Rectangle>
                 <TextBlock Text="{Binding CurrentModeIcon}" FontFamily="Segoe UI Emoji"
                            Foreground="White" FontSize="26"
@@ -94,9 +106,6 @@
                   <TextBlock.Style>
                     <Style TargetType="TextBlock">
                       <Style.Triggers>
-                        <DataTrigger Binding="{Binding CurrentModeId}" Value="game">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                          </DataTrigger>
                         <DataTrigger Binding="{Binding CurrentModeHasCustomIcon}" Value="True">
                           <Setter Property="Visibility" Value="Collapsed"/>
                         </DataTrigger>
@@ -144,18 +153,6 @@
                              FontSize="12" HorizontalAlignment="Center"/>
                 </Border>
                 <Grid Grid.Row="1" Width="96" Height="48" HorizontalAlignment="Center">
-                  <Image Source="/Assets/GameModeIcon.png" Stretch="Uniform">
-                    <Image.Style>
-                      <Style TargetType="Image">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                          <DataTrigger Binding="{Binding Mode.Id}" Value="game">
-                            <Setter Property="Visibility" Value="Visible"/>
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </Image.Style>
-                  </Image>
                   <Image Source="{Binding CustomIconSource}" Stretch="Uniform"
                          Visibility="{Binding HasCustomIcon, Converter={StaticResource BoolToVisibility}}"/>
                   <TextBlock Text="{Binding Icon}" FontFamily="Segoe UI Emoji" FontSize="44"
@@ -164,9 +161,6 @@
                     <TextBlock.Style>
                       <Style TargetType="TextBlock">
                         <Style.Triggers>
-                          <DataTrigger Binding="{Binding Mode.Id}" Value="game">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                          </DataTrigger>
                           <DataTrigger Binding="{Binding HasCustomIcon}" Value="True">
                             <Setter Property="Visibility" Value="Collapsed"/>
                           </DataTrigger>

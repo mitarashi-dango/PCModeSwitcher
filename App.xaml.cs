@@ -103,6 +103,11 @@ public partial class App : Wpf.Application
             _trayIcon = null;
         }
 
+        foreach (var item in _trayModeItems.Values)
+        {
+            item.Image?.Dispose();
+            item.Image = null;
+        }
         _trayMenu?.Dispose();
         _trayMenu = null;
         _trayModeItems.Clear();
@@ -147,7 +152,9 @@ public partial class App : Wpf.Application
     {
         _trayMenu = new Forms.ContextMenuStrip
         {
-            ShowItemToolTips = true
+            ShowItemToolTips = true,
+            ShowCheckMargin = true,
+            ShowImageMargin = true
         };
         var loadingItem = new Forms.ToolStripMenuItem(LocalizationService.Get("Tray.Loading"))
         {
@@ -217,13 +224,22 @@ public partial class App : Wpf.Application
             loadingItem.Dispose();
         }
 
+        var modesById = _mainViewModel.Modes.ToDictionary(
+            mode => mode.Mode.Id,
+            StringComparer.OrdinalIgnoreCase);
+        var modeOrder = BuildTrayModeOrder(
+            _mainViewModel.VisibleModes.Select(mode => mode.Mode.Id),
+            _mainViewModel.Modes.Select(mode => mode.Mode.Id));
         var insertIndex = 0;
-        foreach (var mode in _mainViewModel.Modes)
+        foreach (var modeId in modeOrder)
         {
-            var modeId = mode.Mode.Id;
-            var modeItem = new Forms.ToolStripMenuItem($"{mode.Icon}  {mode.Name}")
+            var mode = modesById[modeId];
+            var modeIcon = LoadTrayModeImage(modeId) ?? RenderTrayModeIcon(mode.Icon);
+            var modeItem = new Forms.ToolStripMenuItem(mode.Name)
             {
                 CheckOnClick = false,
+                Image = modeIcon,
+                ImageScaling = Forms.ToolStripItemImageScaling.SizeToFit,
                 Tag = modeId,
                 ToolTipText = mode.TrayToolTipText
             };
@@ -233,6 +249,51 @@ public partial class App : Wpf.Application
             _trayModeItems[modeId] = modeItem;
             mode.PropertyChanged += OnTrayModePropertyChanged;
         }
+    }
+
+    private static System.Drawing.Image? LoadTrayModeImage(string modeId)
+    {
+        var source = ModeIconAssets.GetCustomIconSource(modeId);
+        if (source is null)
+        {
+            return null;
+        }
+
+        var resource = Wpf.Application.GetResourceStream(new Uri(source, UriKind.Relative));
+        if (resource is null)
+        {
+            return null;
+        }
+
+        using var stream = resource.Stream;
+        using var image = System.Drawing.Image.FromStream(stream);
+        return new System.Drawing.Bitmap(image);
+    }
+
+    private static System.Drawing.Image RenderTrayModeIcon(string icon)
+    {
+        const int canvasSize = 32;
+        var bitmap = new System.Drawing.Bitmap(
+            canvasSize,
+            canvasSize,
+            System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        using var graphics = System.Drawing.Graphics.FromImage(bitmap);
+        using var font = new System.Drawing.Font(
+            "Segoe UI Emoji",
+            21f,
+            System.Drawing.FontStyle.Regular,
+            System.Drawing.GraphicsUnit.Pixel);
+        Forms.TextRenderer.DrawText(
+            graphics,
+            icon,
+            font,
+            new System.Drawing.Rectangle(0, 0, canvasSize, canvasSize),
+            System.Drawing.Color.Black,
+            Forms.TextFormatFlags.HorizontalCenter |
+            Forms.TextFormatFlags.VerticalCenter |
+            Forms.TextFormatFlags.NoPadding |
+            Forms.TextFormatFlags.NoPrefix);
+        return bitmap;
     }
 
     private void OnTrayModePropertyChanged(
@@ -451,6 +512,10 @@ public partial class App : Wpf.Application
             if (_restoreTrayItem is not null)
                 _restoreTrayItem.Enabled = _mainViewModel.HasActiveSession && !_mainViewModel.IsBusy;
         }
+        else if (e.PropertyName == nameof(MainViewModel.VisibleModeIds))
+        {
+            RebuildTrayModeItems();
+        }
     }
 
     private void UpdateTrayModeState()
@@ -481,6 +546,11 @@ public partial class App : Wpf.Application
 
     private void OnModesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
+        RebuildTrayModeItems();
+    }
+
+    private void RebuildTrayModeItems()
+    {
         foreach (var item in _trayModeItems.Values)
         {
             if (item.Tag is string id)
@@ -489,11 +559,21 @@ public partial class App : Wpf.Application
                 if (oldMode is not null) oldMode.PropertyChanged -= OnTrayModePropertyChanged;
             }
             _trayMenu?.Items.Remove(item);
+            item.Image?.Dispose();
+            item.Image = null;
             item.Dispose();
         }
         _trayModeItems.Clear();
         CreateTrayModeItems();
         UpdateTrayModeState();
+    }
+
+    internal static IReadOnlyList<string> BuildTrayModeOrder(
+        IEnumerable<string> visibleModeIds,
+        IEnumerable<string> allModeIds)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return visibleModeIds.Concat(allModeIds).Where(seen.Add).ToList();
     }
 
     internal static bool IsStartupLaunch(IEnumerable<string> arguments) =>
