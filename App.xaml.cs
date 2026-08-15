@@ -23,6 +23,7 @@ public partial class App : Wpf.Application
     private SingleInstanceCoordinator? _singleInstanceCoordinator;
     private GlobalHotkeyService? _globalHotkeyService;
     private ModeEngine? _modeEngine;
+    private readonly AppLogger _appLogger = new();
     private bool _trayHintShown;
     private bool _isWindowHiddenToTray;
     private Forms.ToolStripMenuItem? _restoreTrayItem;
@@ -42,15 +43,7 @@ public partial class App : Wpf.Application
         ShutdownMode = Wpf.ShutdownMode.OnMainWindowClose;
 
         LocalizationService.LanguageChanged += OnLanguageChanged;
-        DispatcherUnhandledException += (_, args) =>
-        {
-            Wpf.MessageBox.Show(
-                LocalizationService.Translate("予期しない問題が発生しました。操作を中止しました。"),
-                "PC Mode Switcher",
-                Wpf.MessageBoxButton.OK,
-                Wpf.MessageBoxImage.Error);
-            args.Handled = true;
-        };
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
 
         var settingsService = new SettingsService();
         var powerService = new PowerSettingsService();
@@ -136,6 +129,7 @@ public partial class App : Wpf.Application
         }
         _mainViewModel = null;
         LocalizationService.LanguageChanged -= OnLanguageChanged;
+        DispatcherUnhandledException -= OnDispatcherUnhandledException;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
 
         if (_singleInstanceCoordinator is not null)
@@ -146,6 +140,19 @@ public partial class App : Wpf.Application
         }
 
         base.OnExit(e);
+    }
+
+    private void OnDispatcherUnhandledException(
+        object sender,
+        System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
+    {
+        args.Handled = true;
+        _appLogger.WriteUnhandledException(args.Exception);
+        Wpf.MessageBox.Show(
+            LocalizationService.Translate("予期しない問題が発生しました。操作を中止しました。"),
+            "PC Mode Switcher",
+            Wpf.MessageBoxButton.OK,
+            Wpf.MessageBoxImage.Error);
     }
 
     private void CreateTrayIcon()
@@ -572,8 +579,14 @@ public partial class App : Wpf.Application
         IEnumerable<string> visibleModeIds,
         IEnumerable<string> allModeIds)
     {
+        var availableModeIds = allModeIds.ToList();
+        var availableModeIdSet = availableModeIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        return visibleModeIds.Concat(allModeIds).Where(seen.Add).ToList();
+        return visibleModeIds
+            .Where(availableModeIdSet.Contains)
+            .Concat(availableModeIds)
+            .Where(seen.Add)
+            .ToList();
     }
 
     internal static bool IsStartupLaunch(IEnumerable<string> arguments) =>

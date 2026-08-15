@@ -377,6 +377,12 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
+    private void Support_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new SupportWindow { Owner = this };
+        window.ShowDialog();
+    }
+
     private void About_Click(object sender, RoutedEventArgs e)
     {
         var window = new AboutWindow { Owner = this };

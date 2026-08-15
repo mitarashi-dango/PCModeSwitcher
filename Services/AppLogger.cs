@@ -48,6 +48,29 @@ public sealed class AppLogger
         }
     }
 
+    public void WriteUnhandledException(Exception exception)
+    {
+        try
+        {
+            Directory.CreateDirectory(_paths.LogDirectory);
+            var path = Path.Combine(
+                _paths.LogDirectory,
+                $"unhandled-{DateTime.UtcNow:yyyy-MM-dd}.log");
+            var details = exception.ToString().Replace('\r', ' ').Replace('\n', ' ');
+            var line = string.Join('\t',
+                DateTimeOffset.UtcNow.ToString("O"),
+                "ERROR",
+                Environment.ProcessId,
+                Environment.Version,
+                details) + Environment.NewLine;
+            File.AppendAllText(path, line, new UTF8Encoding(false));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+    }
+
     private void Cleanup()
     {
         var files = new DirectoryInfo(_paths.LogDirectory)

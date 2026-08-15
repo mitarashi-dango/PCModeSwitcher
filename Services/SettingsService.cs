@@ -93,6 +93,10 @@ public sealed class SettingsService
             Directory.CreateDirectory(_paths.RootDirectory);
             return await SaveJsonAtomicAsync(_paths.SettingsPath, settings);
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Failure("モード設定を保存できませんでした。", ex.ToString());
+        }
         finally
         {
             _saveGate.Release();
@@ -447,7 +451,16 @@ public sealed class SettingsService
         }
         finally
         {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            try
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
     }
 

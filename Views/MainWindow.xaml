@@ -25,6 +25,8 @@
         <MenuItem Header="{loc:Loc Main.Menu.Diagnostics}" Click="Diagnostics_Click"/>
       </MenuItem>
       <MenuItem Header="{loc:Loc Main.Menu.Help}">
+        <MenuItem Header="{loc:Loc Main.Menu.Support}" Click="Support_Click"/>
+        <Separator/>
         <MenuItem Header="{loc:Loc Main.Menu.About}" Click="About_Click"/>
       </MenuItem>
     </Menu>

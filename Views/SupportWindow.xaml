@@ -1,0 +1,33 @@
+<Window x:Class="PCModeSwitcher.Views.SupportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:PCModeSwitcher.Services"
+        Title="{loc:Loc About.SupportTitle}"
+        Width="550" Height="360"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="26">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border Padding="20,18" Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12">
+      <StackPanel>
+        <TextBlock Text="{loc:Loc About.SupportTitle}" FontSize="20" FontWeight="SemiBold"/>
+        <TextBlock Text="{loc:Loc About.SupportDescription}" Margin="0,12,0,0"
+                   Foreground="{StaticResource MutedBrush}" LineHeight="21"/>
+        <TextBlock Text="{loc:Loc About.SupportPrivacy}" Margin="0,14,0,0"
+                   Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+      <Button Content="{loc:Loc Common.Close}" Width="96" IsCancel="True"/>
+      <Button x:Name="KoFiButton" Content="{loc:Loc About.SupportKoFi}" MinWidth="190"
+              Style="{StaticResource PrimaryButtonStyle}" IsDefault="True" Click="KoFiButton_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

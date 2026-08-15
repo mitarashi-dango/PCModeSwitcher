@@ -570,10 +570,30 @@ public sealed class MainViewModel : ObservableObject
             mode.Id = $"user-{Guid.NewGuid():N}";
         _settings.Modes.Add(mode);
         _settings.Hotkeys.Add(new ModeHotkey { ModeId = mode.Id });
-        if (mode.IsEnabled && _settings.VisibleModeIds.Count < SettingsService.MaximumVisibleModeCount)
+        var addedToVisibleModes = mode.IsEnabled &&
+            _settings.VisibleModeIds.Count < SettingsService.MaximumVisibleModeCount;
+        if (addedToVisibleModes)
             _settings.VisibleModeIds.Add(mode.Id);
         var save = await _settingsService.SaveAsync(_settings);
-        if (save.IsSuccess) RebuildModeCards();
+        if (save.IsSuccess)
+        {
+            RebuildModeCards();
+        }
+        else
+        {
+            _settings.Modes.Remove(mode);
+            _settings.Hotkeys.RemoveAll(hotkey => string.Equals(
+                hotkey.ModeId,
+                mode.Id,
+                StringComparison.OrdinalIgnoreCase));
+            if (addedToVisibleModes)
+            {
+                _settings.VisibleModeIds.RemoveAll(id => string.Equals(
+                    id,
+                    mode.Id,
+                    StringComparison.OrdinalIgnoreCase));
+            }
+        }
         return save;
     }
 
@@ -704,20 +724,39 @@ public sealed class MainViewModel : ObservableObject
         if (editor.ShowDialog() != true || editor.EditedMode is null)
             return;
 
-        var index = _settings.Modes.FindIndex(mode => mode.Id == card.Mode.Id);
-        if (index < 0)
-            return;
-
-        _settings.Modes[index] = editor.EditedMode;
-        var result = await _settingsService.SaveAsync(_settings);
-        if (result.IsSuccess) RebuildModeCards();
-        else card.Replace(editor.EditedMode);
+        var editedName = editor.EditedMode.Name;
+        var result = await SaveEditedModeAsync(card.Mode.Id, editor.EditedMode);
         StatusMessage = result.IsSuccess
-            ? LocalizationService.Format("Status.ModeSettingsSaved", card.Name)
+            ? LocalizationService.Format("Status.ModeSettingsSaved", editedName)
             : result.UserMessage;
         var detection = await RefreshCurrentModeCoreAsync();
         if (!detection.IsSuccess)
             AppendStatusWarning(detection.UserMessage);
+    }
+
+    internal async Task<OperationResult> SaveEditedModeAsync(string modeId, PcMode editedMode)
+    {
+        var index = _settings.Modes.FindIndex(mode => string.Equals(
+            mode.Id,
+            modeId,
+            StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+            return OperationResult.Failure("編集するモードが見つかりません。");
+
+        var previousMode = _settings.Modes[index];
+        var replacement = editedMode.Copy();
+        replacement.Id = previousMode.Id;
+        _settings.Modes[index] = replacement;
+        var result = await _settingsService.SaveAsync(_settings);
+        if (result.IsSuccess)
+        {
+            RebuildModeCards();
+        }
+        else
+        {
+            _settings.Modes[index] = previousMode;
+        }
+        return result;
     }
 
     private void RepairUnavailableDefaultPlans()

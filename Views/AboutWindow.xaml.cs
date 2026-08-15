@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using PCModeSwitcher.Services;
@@ -25,6 +24,14 @@ public partial class AboutWindow : Window
 
     private void ProjectLink_Click(object sender, RoutedEventArgs e)
     {
-        Process.Start(new ProcessStartInfo(ProjectUrl) { UseShellExecute = true });
+        var result = ExternalLinkService.Open(new Uri(ProjectUrl));
+        if (!result.IsSuccess)
+        {
+            MessageBox.Show(
+                result.UserMessage,
+                "PC Mode Switcher",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 }

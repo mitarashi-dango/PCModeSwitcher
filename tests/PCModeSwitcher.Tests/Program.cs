@@ -7,8 +7,10 @@ var tests = new List<(string Name, Func<Task> Run)>
 {
     ("既定の9モードと5モード表示", TestDefaultModesAsync),
     ("GAME uses the II-controller image", TestGameModeIconAssetAsync),
+    ("Support link accepts only the trusted HTTPS Ko-fi host", TestSupportLinkValidationAsync),
     ("Tray prioritizes the main screen mode order", TestTrayModeOrderAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
+    ("保存失敗時にモード追加と編集を巻き戻す", TestModeSaveFailureRollbackAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
     ("スタートアップ起動引数の判定", TestStartupLaunchArgumentAsync),
     ("ショートカットの入力検証", TestHotkeyValidationAsync),
@@ -120,6 +122,25 @@ static Task TestGameModeIconAssetAsync()
         "GAME does not reference the II-controller image.");
     return Task.CompletedTask;
 }
+static Task TestSupportLinkValidationAsync()
+{
+    Assert(SupportLinks.TryCreateSupportUri("https://ko-fi.com/nioudachi", out var koFi) &&
+           koFi?.Host == "ko-fi.com", "Ko-fi URL was rejected.");
+    Assert(SupportLinks.TryCreateSupportUri("https://www.ko-fi.com/nioudachi", out _),
+        "Ko-fi www URL was rejected.");
+    Assert(!SupportLinks.TryCreateSupportUri("http://ko-fi.com/nioudachi", out _),
+        "An insecure Ko-fi URL was accepted.");
+    Assert(!SupportLinks.TryCreateSupportUri("https://ko-fi.com.evil.example/nioudachi", out _),
+        "A lookalike Ko-fi host was accepted.");
+    Assert(!SupportLinks.TryCreateSupportUri("https://ko-fi.com:444/nioudachi", out _),
+        "A non-default port was accepted.");
+    Assert(!SupportLinks.TryCreateSupportUri("https://example.com/pay", out _),
+        "An untrusted support host was accepted.");
+    Assert(!SupportLinks.TryCreateSupportUri("", out _),
+        "An empty support URL was accepted.");
+    return Task.CompletedTask;
+}
+
 
 static Task TestTrayModeOrderAsync()
 {
@@ -129,6 +150,12 @@ static Task TestTrayModeOrderAsync()
     Assert(order.SequenceEqual(
             ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4"]),
         "Tray mode order did not prioritize the main screen order.");
+
+    var rebuildingOrder = PCModeSwitcher.App.BuildTrayModeOrder(
+        ["game", "work", "normal"],
+        []);
+    Assert(rebuildingOrder.Count == 0,
+        "Tray mode order retained stale visible mode IDs while cards were rebuilding.");
     return Task.CompletedTask;
 }
 
@@ -175,6 +202,81 @@ static async Task TestSettingsRoundTripAsync()
     {
         if (Directory.Exists(testDirectory))
             Directory.Delete(testDirectory, true);
+    }
+}
+
+static async Task TestModeSaveFailureRollbackAsync()
+{
+    var blockingPath = Path.Combine(
+        Path.GetTempPath(),
+        $"PCModeSwitcher.SaveFailureTests.{Guid.NewGuid():N}");
+    try
+    {
+        await File.WriteAllTextAsync(blockingPath, "This file blocks directory creation.");
+        var viewModel = new MainViewModel(
+            new SettingsService(blockingPath),
+            new PowerSettingsService(
+                new FakePowerPolicyAccessor(PowerSettingsService.BalancedSchemeId),
+                () => false),
+            new FakeMicrophoneMuteService(),
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService());
+        await viewModel.InitializeAsync();
+
+        var originalProfileCount = viewModel.AllProfiles.Count;
+        var originalHotkeyCount = viewModel.Hotkeys.Count;
+        var originalVisibleModeIds = viewModel.VisibleModeIds.ToList();
+        var added = viewModel.CreateNewMode();
+        var addResult = await viewModel.AddModeAsync(added);
+        Assert(!addResult.IsSuccess, "書き込み不能な保存先へのモード追加が成功扱いになりました。");
+        Assert(viewModel.AllProfiles.Count == originalProfileCount &&
+               viewModel.Hotkeys.Count == originalHotkeyCount &&
+               viewModel.AllProfiles.All(mode => !string.Equals(
+                   mode.Id,
+                   added.Id,
+                   StringComparison.OrdinalIgnoreCase)) &&
+               viewModel.VisibleModeIds.SequenceEqual(originalVisibleModeIds),
+            "保存に失敗した追加モードがメモリ上に残りました。");
+
+        var edited = viewModel.AllProfiles.Single(mode => mode.Id == "game");
+        edited.Name = "UNSAVED GAME";
+        var editResult = await viewModel.SaveEditedModeAsync("game", edited);
+        Assert(!editResult.IsSuccess, "書き込み不能な保存先へのモード編集が成功扱いになりました。");
+        Assert(viewModel.AllProfiles.Single(mode => mode.Id == "game").Name == "GAME" &&
+               viewModel.Modes.Single(mode => mode.Mode.Id == "game").Name == "GAME",
+            "保存に失敗したモード編集がメモリまたは画面表示に残りました。");
+
+        var loggerRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"PCModeSwitcher.LoggerTests.{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new AppPaths(loggerRoot);
+            new AppLogger(paths).WriteUnhandledException(
+                new InvalidOperationException("unhandled-test"));
+            var logPath = Directory.EnumerateFiles(
+                paths.LogDirectory,
+                "unhandled-*.log").Single();
+            Assert((await File.ReadAllTextAsync(logPath)).Contains(
+                    "unhandled-test",
+                    StringComparison.Ordinal),
+                "未処理例外の詳細がログに保存されませんでした。");
+        }
+        finally
+        {
+            if (Directory.Exists(loggerRoot)) Directory.Delete(loggerRoot, true);
+        }
+
+        var browserFailure = ExternalLinkService.Open(
+            new Uri("https://example.com"),
+            _ => throw new System.ComponentModel.Win32Exception("browser-test"));
+        Assert(!browserFailure.IsSuccess &&
+               browserFailure.UserMessage == LocalizationService.Get("Error.ExternalBrowser"),
+            "外部ブラウザ起動失敗が操作結果へ変換されませんでした。");
+    }
+    finally
+    {
+        if (File.Exists(blockingPath)) File.Delete(blockingPath);
     }
 }
 
