@@ -3,6 +3,8 @@ using PCModeSwitcher.Models;
 using PCModeSwitcher.ViewModels;
 using PCModeSwitcher.Views;
 using Microsoft.Win32;
+using System.Runtime.InteropServices;
+using Windows.ApplicationModel.Activation;
 using Forms = System.Windows.Forms;
 using Wpf = System.Windows;
 using WpfInterop = System.Windows.Interop;
@@ -26,6 +28,7 @@ public partial class App : Wpf.Application
     private readonly AppLogger _appLogger = new();
     private bool _trayHintShown;
     private bool _isWindowHiddenToTray;
+    private bool _isUnhandledExceptionDialogOpen;
     private Forms.ToolStripMenuItem? _restoreTrayItem;
 
     protected override async void OnStartup(Wpf.StartupEventArgs e)
@@ -148,11 +151,24 @@ public partial class App : Wpf.Application
     {
         args.Handled = true;
         _appLogger.WriteUnhandledException(args.Exception);
-        Wpf.MessageBox.Show(
-            LocalizationService.Translate("予期しない問題が発生しました。操作を中止しました。"),
-            "PC Mode Switcher",
-            Wpf.MessageBoxButton.OK,
-            Wpf.MessageBoxImage.Error);
+        if (_isUnhandledExceptionDialogOpen)
+        {
+            return;
+        }
+
+        _isUnhandledExceptionDialogOpen = true;
+        try
+        {
+            Wpf.MessageBox.Show(
+                LocalizationService.Translate("予期しない問題が発生しました。操作を中止しました。"),
+                "PC Mode Switcher",
+                Wpf.MessageBoxButton.OK,
+                Wpf.MessageBoxImage.Error);
+        }
+        finally
+        {
+            _isUnhandledExceptionDialogOpen = false;
+        }
     }
 
     private void CreateTrayIcon()
@@ -591,5 +607,19 @@ public partial class App : Wpf.Application
 
     internal static bool IsStartupLaunch(IEnumerable<string> arguments) =>
         arguments.Any(argument =>
-            string.Equals(argument, "--startup", StringComparison.OrdinalIgnoreCase));
+            string.Equals(argument, "--startup", StringComparison.OrdinalIgnoreCase)) ||
+        IsPackagedStartupActivation();
+
+    private static bool IsPackagedStartupActivation()
+    {
+        try
+        {
+            return global::Windows.ApplicationModel.AppInstance.GetActivatedEventArgs()
+                is IStartupTaskActivatedEventArgs;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException)
+        {
+            return false;
+        }
+    }
 }
