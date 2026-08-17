@@ -1,4 +1,4 @@
-# PC Mode Switcher 0.5.5
+# PC Mode Switcher 0.5.6
 
 PC Mode Switcherは、ゲーム、仕事、普段使いなど、PCの使い方に合わせてWindows 11の設定をまとめて切り替えるアプリです。
 

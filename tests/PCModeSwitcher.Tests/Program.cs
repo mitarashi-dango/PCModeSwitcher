@@ -7,10 +7,12 @@ var tests = new List<(string Name, Func<Task> Run)>
 {
     ("既定の9モードと5モード表示", TestDefaultModesAsync),
     ("GAME uses the II-controller image", TestGameModeIconAssetAsync),
-    ("ゲームパッド絵文字をⅡコン表記へ移行", TestGamepadEmojiMigrationAsync),
+    ("ゲームパッド絵文字をⅡコン画像へ移行", TestGamepadEmojiMigrationAsync),
     ("Support link accepts only the trusted HTTPS Ko-fi host", TestSupportLinkValidationAsync),
     ("Tray prioritizes the main screen mode order", TestTrayModeOrderAsync),
     ("リフレッシュレート表示は一方向バインド", TestRefreshRateBindingAsync),
+    ("モード編集で専用アイコン画像を表示", TestAdvancedEditorCustomIconAsync),
+    ("モード編集画面が小さい画面へ収まる", TestAdvancedEditorWindowSizeAsync),
     ("モード編集をキャンセルしても元データを変更しない", TestAdvancedModeEditSessionIsolationAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("保存失敗時にモード追加と編集を巻き戻す", TestModeSaveFailureRollbackAsync),
@@ -104,10 +106,14 @@ static Task TestDefaultModesAsync()
     Assert(settings.Modes.Skip(3).Select(mode => mode.Name)
             .SequenceEqual(["CUSTOM1", "CUSTOM2", "CUSTOM3", "CUSTOM4", "CUSTOM5", "CUSTOM6"]),
         "CUSTOM1〜6の既定名が正しくありません。");
-    Assert(settings.Modes.Take(3).Select(mode => mode.Icon).SequenceEqual(["Ⅱコン", "💼", "🖥"]),
+    Assert(settings.Modes.Take(3).Select(mode => mode.Icon).SequenceEqual([ModeIconKeys.IiController, "💼", "🖥"]),
         "GAME・WORK・NORMALの既定アイコンが変わっています。");
     Assert(settings.Modes.Skip(3).All(mode => mode.Icon.EndsWith('\uFE0E')),
         "CUSTOM1〜6のアイコンがモノクロの文字表示指定になっていません。");
+    Assert(settings.Modes.Skip(3).All(mode =>
+            ModeIconAssets.HasCustomIcon(mode.Id, mode.Icon) &&
+            ModeIconAssets.GetCustomIconSource(mode.Id, mode.Icon) is not null),
+        "CUSTOM1〜6の十二支画像が専用アイコンとして登録されていません。");
     Assert(settings.Modes.All(mode => mode.MicrophoneMute == MicrophoneMuteSetting.NoChange),
         "マイク設定の既定値が『変更しない』ではありません。");
     Assert(settings.Hotkeys.Count == 9 && settings.Hotkeys.All(hotkey => !hotkey.IsConfigured),
@@ -123,6 +129,9 @@ static Task TestGameModeIconAssetAsync()
         "GAME is not registered as an image icon.");
     Assert(ModeIconAssets.GetCustomIconSource("GAME") == "/Assets/GameModeIcon.png",
         "GAME does not reference the II-controller image.");
+    Assert(ModeIconAssets.GetCustomIconSource("user-mode", ModeIconKeys.IiController) ==
+           "/Assets/GameModeIcon.png",
+        "The II-controller icon key does not reference the image asset.");
     return Task.CompletedTask;
 }
 
@@ -144,8 +153,8 @@ static async Task TestGamepadEmojiMigrationAsync()
             "旧ゲームパッドアイコンを含む設定を再読み込みできませんでした。");
         var migrated = loaded.Value ?? throw new InvalidOperationException("移行後の設定データがありません。");
         Assert(migrated.Modes.Take(3).Select(mode => mode.Icon)
-                .SequenceEqual(["Ⅱコン", "Ⅱコン", "前Ⅱコン後"]),
-            "通常・白黒・カラーのゲームパッド絵文字がすべてⅡコン表記へ移行されていません。");
+                .All(icon => icon == ModeIconKeys.IiController),
+            "通常・白黒・カラーのゲームパッド絵文字がすべてⅡコン画像キーへ移行されていません。");
     }
     finally
     {
@@ -207,6 +216,54 @@ static Task TestRefreshRateBindingAsync()
            itemBinding.Contains("Path=.", StringComparison.Ordinal) &&
            itemBinding.Contains("Mode=OneWay", StringComparison.Ordinal),
         "リフレッシュレート項目の値が、パスなしのTwoWayバインドへ戻っています。");
+    return Task.CompletedTask;
+}
+
+static Task TestAdvancedEditorCustomIconAsync()
+{
+    var xamlPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "TestAssets",
+        "AdvancedModeEditorWindow.xaml");
+    var document = System.Xml.Linq.XDocument.Load(xamlPath);
+    var customImage = document.Descendants()
+        .SingleOrDefault(element => element.Name.LocalName == "Image" &&
+            ((string?)element.Attribute("Source"))?.Contains("CustomModeIconSource", StringComparison.Ordinal) == true);
+    var customIconFrame = document.Descendants()
+        .SingleOrDefault(element => element.Name.LocalName == "TextBox" &&
+            (string?)element.Attribute("IsReadOnly") == "True");
+    var hidesIconText = document.Descendants()
+        .Any(element => element.Name.LocalName == "DataTrigger" &&
+            ((string?)element.Attribute("Binding"))?.Contains("HasCustomModeIcon", StringComparison.Ordinal) == true &&
+            element.Descendants().Any(child => child.Name.LocalName == "Setter" &&
+                (string?)child.Attribute("Property") == "Visibility" &&
+                (string?)child.Attribute("Value") == "Collapsed"));
+
+    Assert(customImage is not null &&
+           (string?)customImage.Attribute("Width") == "72" &&
+           (string?)customImage.Attribute("Height") == "30" &&
+           customIconFrame is not null &&
+           (string?)customIconFrame.Attribute("MinHeight") == "38" &&
+           hidesIconText,
+        "モード編集画面が専用アイコンをテキストボックス枠内へ画像表示していません。");
+    return Task.CompletedTask;
+}
+
+static Task TestAdvancedEditorWindowSizeAsync()
+{
+    var xamlPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "TestAssets",
+        "AdvancedModeEditorWindow.xaml");
+    var window = System.Xml.Linq.XDocument.Load(xamlPath).Root
+        ?? throw new InvalidOperationException("モード編集画面のXAMLを読み込めませんでした。");
+    var height = double.Parse((string?)window.Attribute("Height") ?? "0",
+        System.Globalization.CultureInfo.InvariantCulture);
+    var minimumHeight = double.Parse((string?)window.Attribute("MinHeight") ?? "0",
+        System.Globalization.CultureInfo.InvariantCulture);
+
+    Assert(height <= 680 && minimumHeight <= 560,
+        "モード編集画面の固定高さが小さい画面の作業領域を越えます。");
     return Task.CompletedTask;
 }
 

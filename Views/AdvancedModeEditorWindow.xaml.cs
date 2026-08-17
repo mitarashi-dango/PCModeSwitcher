@@ -17,10 +17,24 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
     private readonly WindowPlacementService _windowService = new();
     private DisplayModeInfo? _selectedDisplay;
     private uint? _selectedRefreshRate;
+    private string _modeIcon = "●";
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string ModeName { get; set; }
-    public string ModeIcon { get; set; }
+    public string ModeIcon
+    {
+        get => _modeIcon;
+        set
+        {
+            if (_modeIcon == value) return;
+            _modeIcon = value;
+            Changed();
+            Changed(nameof(HasCustomModeIcon));
+            Changed(nameof(CustomModeIconSource));
+        }
+    }
+    public bool HasCustomModeIcon => ModeIconAssets.HasCustomIcon(_editSession.Draft.Id, ModeIcon);
+    public string? CustomModeIconSource => ModeIconAssets.GetCustomIconSource(_editSession.Draft.Id, ModeIcon);
     public bool IsModeEnabled { get; set; }
     public bool HasBattery { get; }
     public ObservableCollection<TimeoutChoice> TimeoutChoices { get; } = CreateTimeouts();
@@ -92,6 +106,8 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
         _editSession = new(mode);
         var draft = _editSession.Draft;
         InitializeComponent(); Owner = owner;
+        MaxWidth = SystemParameters.WorkArea.Width;
+        MaxHeight = SystemParameters.WorkArea.Height;
         ModeName = draft.Name; ModeIcon = draft.Icon; IsModeEnabled = draft.IsEnabled; HasBattery = hasBattery;
         PowerPlans = new(plans); ChangePowerPlan = draft.Power.ChangePowerPlan;
         SelectedPowerPlan = PowerPlans.FirstOrDefault(value => value.Id == draft.Power.PowerPlanId || value.Id == draft.PowerPlanId);
