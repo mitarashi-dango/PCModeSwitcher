@@ -42,7 +42,7 @@
         <StackPanel Margin="18">
           <TextBlock Text="{loc:Loc Advanced.TargetMonitor}"/><ComboBox ItemsSource="{Binding Displays}" SelectedItem="{Binding SelectedDisplay}" DisplayMemberPath="FriendlyName" Margin="0,5,0,14"/>
           <TextBlock Text="{loc:Loc Advanced.RefreshRate}"/>
-          <ComboBox ItemsSource="{Binding RefreshRates}" SelectedItem="{Binding SelectedRefreshRate}" Margin="0,5,0,12"><ComboBox.ItemTemplate><DataTemplate><TextBlock><Run Text="{Binding}"/><Run Text=" Hz"/></TextBlock></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+          <ComboBox ItemsSource="{Binding RefreshRates}" SelectedItem="{Binding SelectedRefreshRate}" Margin="0,5,0,12"><ComboBox.ItemTemplate><DataTemplate><TextBlock><Run Text="{Binding Path=., Mode=OneWay}"/><Run Text=" Hz"/></TextBlock></DataTemplate></ComboBox.ItemTemplate></ComboBox>
           <StackPanel Orientation="Horizontal"><Button Content="{loc:Loc Advanced.TestRefreshRate}" Click="TestDisplay_Click"/><TextBlock Text="{Binding DisplayTrustText}" Margin="16,8"/></StackPanel>
           <TextBlock Margin="0,18,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Text="{loc:Loc Advanced.RefreshRateDescription}"/>
         </StackPanel>

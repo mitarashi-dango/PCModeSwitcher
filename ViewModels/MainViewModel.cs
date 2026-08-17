@@ -159,7 +159,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(Hotkeys));
             OnPropertyChanged(nameof(VisibleModeIds));
 
-            var startupResult = _startupService.SetEnabled(_settings.StartWithWindows);
+            var startupResult = await _startupService.SetEnabledAsync(_settings.StartWithWindows);
             if (!startupResult.IsSuccess)
             {
                 AppendStatusWarning(startupResult.UserMessage);
@@ -276,7 +276,7 @@ public sealed class MainViewModel : ObservableObject
         var previousEnabledModeIds = _settings.Modes.Where(mode => mode.IsEnabled)
             .Select(mode => mode.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var startupResult = _startupService.SetEnabled(startWithWindows);
+        var startupResult = await _startupService.SetEnabledAsync(startWithWindows);
         if (!startupResult.IsSuccess)
         {
             StatusMessage = startupResult.UserMessage;
@@ -288,7 +288,7 @@ public sealed class MainViewModel : ObservableObject
                 .Append(newRestoreHotkey).ToList());
         if (!hotkeyResult.IsSuccess)
         {
-            var startupRollback = _startupService.SetEnabled(previousStartWithWindows);
+            var startupRollback = await _startupService.SetEnabledAsync(previousStartWithWindows);
             StatusMessage = startupRollback.IsSuccess
                 ? hotkeyResult.UserMessage
                 : $"{hotkeyResult.UserMessage} {startupRollback.UserMessage}";
@@ -332,7 +332,7 @@ public sealed class MainViewModel : ObservableObject
             RefreshMicrophonePreference();
             NotifyAppPreferencesChanged();
 
-            var startupRollback = _startupService.SetEnabled(previousStartWithWindows);
+            var startupRollback = await _startupService.SetEnabledAsync(previousStartWithWindows);
             var hotkeyRollback = _globalHotkeyService.ReplaceBindings(
                 previousHotkeys.Where(hotkey => previousEnabledModeIds.Contains(hotkey.ModeId))
                     .Append(previousRestoreHotkey).ToList());

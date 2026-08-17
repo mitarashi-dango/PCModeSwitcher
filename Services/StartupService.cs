@@ -1,12 +1,15 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
 using Microsoft.Win32;
 using PCModeSwitcher.Models;
+using Windows.ApplicationModel;
 
 namespace PCModeSwitcher.Services;
 
 public sealed class StartupService : IStartupService
 {
+    internal const string PackagedStartupTaskId = "PCModeSwitcherStartup";
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "PCModeSwitcher";
     private readonly Func<string?> _executablePathProvider;
@@ -16,7 +19,15 @@ public sealed class StartupService : IStartupService
         _executablePathProvider = executablePathProvider ?? (() => Environment.ProcessPath);
     }
 
-    public OperationResult SetEnabled(bool enabled)
+    public async Task<OperationResult> SetEnabledAsync(bool enabled)
+    {
+        if (HasPackageIdentity())
+            return await SetPackagedStartupEnabledAsync(enabled);
+
+        return SetUnpackagedStartupEnabled(enabled);
+    }
+
+    private OperationResult SetUnpackagedStartupEnabled(bool enabled)
     {
         try
         {
@@ -51,4 +62,51 @@ public sealed class StartupService : IStartupService
                 ex.Message);
         }
     }
+
+    private static async Task<OperationResult> SetPackagedStartupEnabledAsync(bool enabled)
+    {
+        try
+        {
+            var startupTask = await StartupTask.GetAsync(PackagedStartupTaskId);
+            if (!enabled)
+            {
+                startupTask.Disable();
+                return OperationResult.Success();
+            }
+
+            var state = startupTask.State == StartupTaskState.Enabled
+                ? startupTask.State
+                : await startupTask.RequestEnableAsync();
+            return state switch
+            {
+                StartupTaskState.Enabled => OperationResult.Success(),
+                StartupTaskState.EnabledByPolicy => OperationResult.Success(),
+                StartupTaskState.DisabledByUser => OperationResult.Failure(
+                    "Windowsの［設定］→［アプリ］→［スタートアップ］でPC Mode Switcherを有効にしてください。"),
+                StartupTaskState.DisabledByPolicy => OperationResult.Failure(
+                    "組織のポリシーにより、スタートアップを有効にできません。"),
+                _ => OperationResult.Failure("スタートアップを有効にできませんでした。")
+            };
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or COMException)
+        {
+            return OperationResult.Failure(
+                "スタートアップ設定を変更できませんでした。",
+                ex.Message);
+        }
+    }
+
+    private static bool HasPackageIdentity()
+    {
+        try
+        {
+            _ = Package.Current.Id.FullName;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException)
+        {
+            return false;
+        }
+    }
+
 }

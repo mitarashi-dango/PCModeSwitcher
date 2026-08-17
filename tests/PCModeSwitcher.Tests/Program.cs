@@ -9,6 +9,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("GAME uses the II-controller image", TestGameModeIconAssetAsync),
     ("Support link accepts only the trusted HTTPS Ko-fi host", TestSupportLinkValidationAsync),
     ("Tray prioritizes the main screen mode order", TestTrayModeOrderAsync),
+    ("リフレッシュレート表示は一方向バインド", TestRefreshRateBindingAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("保存失敗時にモード追加と編集を巻き戻す", TestModeSaveFailureRollbackAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
@@ -156,6 +157,26 @@ static Task TestTrayModeOrderAsync()
         []);
     Assert(rebuildingOrder.Count == 0,
         "Tray mode order retained stale visible mode IDs while cards were rebuilding.");
+    return Task.CompletedTask;
+}
+
+static Task TestRefreshRateBindingAsync()
+{
+    var xamlPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "TestAssets",
+        "AdvancedModeEditorWindow.xaml");
+    var document = System.Xml.Linq.XDocument.Load(xamlPath);
+    var itemBinding = document
+        .Descendants()
+        .Where(element => element.Name.LocalName == "Run")
+        .Select(element => (string?)element.Attribute("Text"))
+        .SingleOrDefault(value => value?.StartsWith("{Binding", StringComparison.Ordinal) == true);
+
+    Assert(itemBinding is not null &&
+           itemBinding.Contains("Path=.", StringComparison.Ordinal) &&
+           itemBinding.Contains("Mode=OneWay", StringComparison.Ordinal),
+        "リフレッシュレート項目の値が、パスなしのTwoWayバインドへ戻っています。");
     return Task.CompletedTask;
 }
 
@@ -1408,10 +1429,10 @@ sealed class FakeStartupService : IStartupService
 {
     public bool Enabled { get; private set; }
 
-    public OperationResult SetEnabled(bool enabled)
+    public Task<OperationResult> SetEnabledAsync(bool enabled)
     {
         Enabled = enabled;
-        return OperationResult.Success();
+        return Task.FromResult(OperationResult.Success());
     }
 }
 

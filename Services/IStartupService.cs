@@ -4,5 +4,5 @@ namespace PCModeSwitcher.Services;
 
 public interface IStartupService
 {
-    OperationResult SetEnabled(bool enabled);
+    Task<OperationResult> SetEnabledAsync(bool enabled);
 }
