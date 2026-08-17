@@ -26,8 +26,8 @@ public sealed class ModeCardViewModel : ObservableObject
     public bool HasBattery => _hasBattery;
     public string Name => _mode.Name;
     public string Icon => _mode.Icon;
-    public bool HasCustomIcon => ModeIconAssets.HasCustomIcon(_mode.Id);
-    public string? CustomIconSource => ModeIconAssets.GetCustomIconSource(_mode.Id);
+    public bool HasCustomIcon => ModeIconAssets.HasCustomIcon(_mode.Id, _mode.Icon);
+    public string? CustomIconSource => ModeIconAssets.GetCustomIconSource(_mode.Id, _mode.Icon);
     public string DisplaySummary =>
         FormatSummary(
             HasStructuredPower && _mode.Power.DisplayTimeoutAcSeconds is null ? null : _mode.DisplayTimeoutAc,

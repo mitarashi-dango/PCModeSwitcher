@@ -257,7 +257,7 @@ public partial class App : Wpf.Application
         foreach (var modeId in modeOrder)
         {
             var mode = modesById[modeId];
-            var modeIcon = LoadTrayModeImage(modeId) ?? RenderTrayModeIcon(mode.Icon);
+            var modeIcon = LoadTrayModeImage(modeId, mode.Icon) ?? RenderTrayModeIcon(mode.Icon);
             var modeItem = new Forms.ToolStripMenuItem(mode.Name)
             {
                 CheckOnClick = false,
@@ -274,9 +274,9 @@ public partial class App : Wpf.Application
         }
     }
 
-    private static System.Drawing.Image? LoadTrayModeImage(string modeId)
+    private static System.Drawing.Image? LoadTrayModeImage(string modeId, string icon)
     {
-        var source = ModeIconAssets.GetCustomIconSource(modeId);
+        var source = ModeIconAssets.GetCustomIconSource(modeId, icon);
         if (source is null)
         {
             return null;

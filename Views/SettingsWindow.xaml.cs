@@ -325,8 +325,8 @@ public sealed class ModeSettingsItem : ObservableObject
     public string Name { get; }
     public string Icon { get; }
     public bool CanDelete { get; }
-    public bool HasCustomIcon => ModeIconAssets.HasCustomIcon(Id);
-    public string? CustomIconSource => ModeIconAssets.GetCustomIconSource(Id);
+    public bool HasCustomIcon => ModeIconAssets.HasCustomIcon(Id, Icon);
+    public string? CustomIconSource => ModeIconAssets.GetCustomIconSource(Id, Icon);
     public bool IsVisible
     {
         get => _isVisible;

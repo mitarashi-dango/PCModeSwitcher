@@ -64,9 +64,18 @@ public sealed class MainViewModel : ObservableObject
         }
     }
     public string CurrentModeName { get => _currentModeName; private set => SetProperty(ref _currentModeName, value); }
-    public string CurrentModeIcon { get => _currentModeIcon; private set => SetProperty(ref _currentModeIcon, value); }
-    public bool CurrentModeHasCustomIcon => ModeIconAssets.HasCustomIcon(CurrentModeId);
-    public string? CurrentModeCustomIconSource => ModeIconAssets.GetCustomIconSource(CurrentModeId);
+    public string CurrentModeIcon
+    {
+        get => _currentModeIcon;
+        private set
+        {
+            if (!SetProperty(ref _currentModeIcon, value)) return;
+            OnPropertyChanged(nameof(CurrentModeHasCustomIcon));
+            OnPropertyChanged(nameof(CurrentModeCustomIconSource));
+        }
+    }
+    public bool CurrentModeHasCustomIcon => ModeIconAssets.HasCustomIcon(CurrentModeId, CurrentModeIcon);
+    public string? CurrentModeCustomIconSource => ModeIconAssets.GetCustomIconSource(CurrentModeId, CurrentModeIcon);
     public bool? IsMicrophoneOn
     {
         get => _isMicrophoneOn;

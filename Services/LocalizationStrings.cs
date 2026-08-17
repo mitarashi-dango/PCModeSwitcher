@@ -89,7 +89,7 @@ internal static partial class LocalizationStrings
         ("Advanced.Apps", "アプリ", "Apps", "應用程式"),
         ("Advanced.Windows", "ウィンドウ", "Windows", "視窗"),
         ("Advanced.ModeName", "モード名", "Mode name", "模式名稱"),
-        ("Advanced.Icon", "アイコン（絵文字）", "Icon (emoji)", "圖示（表情符號）"),
+        ("Advanced.Icon", "アイコン", "Icon", "圖示"),
         ("Advanced.Status", "状態", "Status", "狀態"),
         ("Advanced.EnableMode", "このモードを有効にする", "Enable this mode", "啟用此模式"),
         ("Advanced.RestoreDescription", "適用前に現在状態を記録し、このアプリが変更した項目だけを［元に戻す］で可能な範囲で元の状態へ戻します。", "The app records the current state before applying a mode. Restore attempts to return only settings changed by this app.", "套用前會記錄目前狀態；［還原］會盡可能只還原本應用程式變更的項目。"),

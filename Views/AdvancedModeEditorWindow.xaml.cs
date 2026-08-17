@@ -5,20 +5,36 @@ using System.Windows;
 using Microsoft.Win32;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.Services;
+using PCModeSwitcher.ViewModels;
 
 namespace PCModeSwitcher.Views;
 
 public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
 {
     private const uint NoChange = uint.MaxValue;
-    private readonly PcMode _source;
+    private readonly AdvancedModeEditSession _editSession;
     private readonly DisplayModeService _displayService = new();
     private readonly WindowPlacementService _windowService = new();
     private DisplayModeInfo? _selectedDisplay;
+    private uint? _selectedRefreshRate;
+    private string _modeIcon = "●";
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string ModeName { get; set; }
-    public string ModeIcon { get; set; }
+    public string ModeIcon
+    {
+        get => _modeIcon;
+        set
+        {
+            if (_modeIcon == value) return;
+            _modeIcon = value;
+            Changed();
+            Changed(nameof(HasCustomModeIcon));
+            Changed(nameof(CustomModeIconSource));
+        }
+    }
+    public bool HasCustomModeIcon => ModeIconAssets.HasCustomIcon(_editSession.Draft.Id, ModeIcon);
+    public string? CustomModeIconSource => ModeIconAssets.GetCustomIconSource(_editSession.Draft.Id, ModeIcon);
     public bool IsModeEnabled { get; set; }
     public bool HasBattery { get; }
     public ObservableCollection<TimeoutChoice> TimeoutChoices { get; } = CreateTimeouts();
@@ -49,14 +65,23 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
             _selectedDisplay = value;
             RefreshRates.Clear();
             if (value is not null) foreach (var rate in value.SupportedRefreshRates) RefreshRates.Add(rate);
-            SelectedRefreshRate = value is not null && _source.Display.RefreshRate is { } requested && RefreshRates.Contains(requested)
+            SelectedRefreshRate = value is not null && _editSession.Draft.Display.RefreshRate is { } requested && RefreshRates.Contains(requested)
                 ? requested : value?.CurrentRefreshRate;
-            Changed(); Changed(nameof(SelectedRefreshRate));
+            Changed(); Changed(nameof(DisplayTrustText));
         }
     }
     public ObservableCollection<uint> RefreshRates { get; } = [];
-    public uint? SelectedRefreshRate { get; set; }
-    public string DisplayTrustText => _source.Display.IsTrusted
+    public uint? SelectedRefreshRate
+    {
+        get => _selectedRefreshRate;
+        set
+        {
+            if (_selectedRefreshRate == value) return;
+            _selectedRefreshRate = value;
+            Changed(); Changed(nameof(DisplayTrustText));
+        }
+    }
+    public string DisplayTrustText => IsSelectedDisplayTrusted
         ? LocalizationService.Get("Advanced.Verified")
         : LocalizationService.Get("Advanced.Unverified");
 
@@ -73,30 +98,34 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
     public LaunchEditorRow? SelectedLaunchItem { get; set; }
     public CloseEditorRow? SelectedCloseRule { get; set; }
     public MonitorEditorRow? SelectedMonitorRule { get; set; }
-    public string WindowSummary => LocalizationService.Format("Advanced.SavedWindows", _source.WindowPlacements.Count);
+    public string WindowSummary => LocalizationService.Format("Advanced.SavedWindows", _editSession.Draft.WindowPlacements.Count);
     public PcMode? EditedMode { get; private set; }
 
     public AdvancedModeEditorWindow(PcMode mode, IReadOnlyList<PowerPlan> plans, bool hasBattery, Window owner)
     {
-        InitializeComponent(); Owner = owner; _source = mode;
-        ModeName = mode.Name; ModeIcon = mode.Icon; IsModeEnabled = mode.IsEnabled; HasBattery = hasBattery;
-        PowerPlans = new(plans); ChangePowerPlan = mode.Power.ChangePowerPlan;
-        SelectedPowerPlan = PowerPlans.FirstOrDefault(value => value.Id == mode.Power.PowerPlanId || value.Id == mode.PowerPlanId);
-        AcPowerMode = PowerModes.First(value => value.Value == mode.Power.AcPowerMode);
-        DcPowerMode = PowerModes.First(value => value.Value == mode.Power.DcPowerMode);
-        SleepPrevention = SleepPreventions.First(value => value.Value == mode.Power.SleepPrevention);
-        DisplayAc = FindTimeout(mode.Power.DisplayTimeoutAcSeconds); DisplayDc = FindTimeout(mode.Power.DisplayTimeoutDcSeconds);
-        SleepAc = FindTimeout(mode.Power.SleepTimeoutAcSeconds); SleepDc = FindTimeout(mode.Power.SleepTimeoutDcSeconds);
-        OutputVolume = mode.Audio.Output.VolumePercent?.ToString() ?? "";
-        MicrophoneVolume = mode.Audio.Microphone.VolumePercent?.ToString() ?? "";
-        OutputMute = MuteChoices.First(value => value.Value == mode.Audio.Output.Mute);
-        MicrophoneMute = MuteChoices.First(value => value.Value == mode.Audio.Microphone.Mute);
-        foreach (var item in mode.LaunchItems) LaunchItems.Add(LaunchEditorRow.From(item));
-        foreach (var rule in mode.CloseProcessRules) CloseRules.Add(CloseEditorRow.From(rule));
-        foreach (var rule in mode.MonitorRules) MonitorRules.Add(new() { ExecutablePathOrName = rule.ExecutablePathOrName });
+        _editSession = new(mode);
+        var draft = _editSession.Draft;
+        InitializeComponent(); Owner = owner;
+        MaxWidth = SystemParameters.WorkArea.Width;
+        MaxHeight = SystemParameters.WorkArea.Height;
+        ModeName = draft.Name; ModeIcon = draft.Icon; IsModeEnabled = draft.IsEnabled; HasBattery = hasBattery;
+        PowerPlans = new(plans); ChangePowerPlan = draft.Power.ChangePowerPlan;
+        SelectedPowerPlan = PowerPlans.FirstOrDefault(value => value.Id == draft.Power.PowerPlanId || value.Id == draft.PowerPlanId);
+        AcPowerMode = PowerModes.First(value => value.Value == draft.Power.AcPowerMode);
+        DcPowerMode = PowerModes.First(value => value.Value == draft.Power.DcPowerMode);
+        SleepPrevention = SleepPreventions.First(value => value.Value == draft.Power.SleepPrevention);
+        DisplayAc = FindTimeout(draft.Power.DisplayTimeoutAcSeconds); DisplayDc = FindTimeout(draft.Power.DisplayTimeoutDcSeconds);
+        SleepAc = FindTimeout(draft.Power.SleepTimeoutAcSeconds); SleepDc = FindTimeout(draft.Power.SleepTimeoutDcSeconds);
+        OutputVolume = draft.Audio.Output.VolumePercent?.ToString() ?? "";
+        MicrophoneVolume = draft.Audio.Microphone.VolumePercent?.ToString() ?? "";
+        OutputMute = MuteChoices.First(value => value.Value == draft.Audio.Output.Mute);
+        MicrophoneMute = MuteChoices.First(value => value.Value == draft.Audio.Microphone.Mute);
+        foreach (var item in draft.LaunchItems) LaunchItems.Add(LaunchEditorRow.From(item));
+        foreach (var rule in draft.CloseProcessRules) CloseRules.Add(CloseEditorRow.From(rule));
+        foreach (var rule in draft.MonitorRules) MonitorRules.Add(new() { ExecutablePathOrName = rule.ExecutablePathOrName });
         var displayResult = _displayService.GetDisplays();
         if (displayResult.Value is not null) foreach (var display in displayResult.Value) Displays.Add(display);
-        SelectedDisplay = Displays.FirstOrDefault(value => string.Equals(value.DeviceName, mode.Display.DeviceName, StringComparison.OrdinalIgnoreCase));
+        SelectedDisplay = Displays.FirstOrDefault(value => string.Equals(value.DeviceName, draft.Display.DeviceName, StringComparison.OrdinalIgnoreCase));
         DataContext = this;
     }
 
@@ -111,8 +140,7 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
         if (!apply.IsSuccess) { Warn(apply.UserMessage); return; }
         if (new DisplayConfirmationWindow(SelectedRefreshRate.Value) { Owner = this }.ShowDialog() != true)
         { _displayService.Restore(original.Value); return; }
-        _source.Display.IsTrusted = true; _source.Display.HardwareSignature = SelectedDisplay.HardwareSignature;
-        _source.Display.DeviceName = SelectedDisplay.DeviceName; _source.Display.RefreshRate = SelectedRefreshRate;
+        _editSession.ConfirmDisplay(SelectedDisplay.DeviceName, SelectedRefreshRate.Value, SelectedDisplay.HardwareSignature);
         Changed(nameof(DisplayTrustText));
     }
 
@@ -120,7 +148,7 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
     {
         var result = _windowService.CaptureVisibleWindows();
         if (!result.IsSuccess || result.Value is null) { Warn(result.UserMessage); return; }
-        _source.WindowPlacements = result.Value.Select(value => value.Copy()).ToList(); Changed(nameof(WindowSummary));
+        _editSession.ReplaceWindowPlacements(result.Value); Changed(nameof(WindowSummary));
     }
     private void AddLaunch_Click(object sender, RoutedEventArgs e)
     {
@@ -147,7 +175,7 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
         if (CloseRules.Any(value => value.AllowForceKill) && MessageBox.Show(
             LocalizationService.Get("Dialog.ForceKill"), LocalizationService.Get("Dialog.ForceKillTitle"),
             MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        var value = _source.Copy(); value.Name = ModeName.Trim(); value.Icon = string.IsNullOrWhiteSpace(ModeIcon) ? "●" : ModeIcon.Trim(); value.IsEnabled = IsModeEnabled;
+        var value = _editSession.Draft.Copy(); value.Name = ModeName.Trim(); value.Icon = string.IsNullOrWhiteSpace(ModeIcon) ? "●" : ModeIcon.Trim(); value.IsEnabled = IsModeEnabled;
         value.Power.ChangePowerPlan = ChangePowerPlan; if (SelectedPowerPlan is not null) value.Power.PowerPlanId = SelectedPowerPlan.Id;
         value.Power.AcPowerMode = AcPowerMode?.Value ?? WindowsPowerMode.NoChange; value.Power.DcPowerMode = DcPowerMode?.Value ?? WindowsPowerMode.NoChange;
         value.Power.SleepPrevention = SleepPrevention?.Value ?? SleepPreventionMode.None;
@@ -158,9 +186,10 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
         if (value.Power.DisplayTimeoutDcSeconds is { } displayDc) value.DisplayTimeoutBattery = displayDc;
         if (value.Power.SleepTimeoutAcSeconds is { } sleepAc) value.SleepTimeoutAc = sleepAc;
         if (value.Power.SleepTimeoutDcSeconds is { } sleepDc) value.SleepTimeoutBattery = sleepDc;
+        var displayIsTrusted = IsSelectedDisplayTrusted;
         value.Display.DeviceName = SelectedDisplay?.DeviceName; value.Display.RefreshRate = SelectedDisplay is null ? null : SelectedRefreshRate;
-        if (SelectedDisplay is null) { value.Display.IsTrusted = false; value.Display.HardwareSignature = null; }
-        else if (!string.Equals(value.Display.HardwareSignature, SelectedDisplay.HardwareSignature, StringComparison.Ordinal) || value.Display.RefreshRate != _source.Display.RefreshRate) value.Display.IsTrusted = false;
+        value.Display.IsTrusted = displayIsTrusted;
+        value.Display.HardwareSignature = displayIsTrusted ? SelectedDisplay!.HardwareSignature : null;
         value.Audio.Output.VolumePercent = outputVolume; value.Audio.Output.Mute = OutputMute?.Value ?? AudioMuteSetting.NoChange;
         value.Audio.Microphone.VolumePercent = microphoneVolume; value.Audio.Microphone.Mute = MicrophoneMute?.Value ?? AudioMuteSetting.NoChange;
         value.MicrophoneMute = value.Audio.Microphone.Mute switch { AudioMuteSetting.Mute => MicrophoneMuteSetting.Mute, AudioMuteSetting.Unmute => MicrophoneMuteSetting.Unmute, _ => MicrophoneMuteSetting.NoChange };
@@ -168,6 +197,9 @@ public partial class AdvancedModeEditorWindow : Window, INotifyPropertyChanged
         value.MonitorRules = MonitorRules.Where(row => !string.IsNullOrWhiteSpace(row.ExecutablePathOrName)).Select(row => new ProcessMonitorRule { ExecutablePathOrName = row.ExecutablePathOrName.Trim() }).ToList();
         EditedMode = value; DialogResult = true;
     }
+
+    private bool IsSelectedDisplayTrusted => _editSession.IsDisplayTrusted(
+        SelectedDisplay?.DeviceName, SelectedRefreshRate, SelectedDisplay?.HardwareSignature);
 
     private TimeoutChoice FindTimeout(uint? seconds)
     {
