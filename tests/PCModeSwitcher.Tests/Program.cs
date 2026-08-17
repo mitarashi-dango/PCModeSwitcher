@@ -10,6 +10,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("Support link accepts only the trusted HTTPS Ko-fi host", TestSupportLinkValidationAsync),
     ("Tray prioritizes the main screen mode order", TestTrayModeOrderAsync),
     ("リフレッシュレート表示は一方向バインド", TestRefreshRateBindingAsync),
+    ("モード編集をキャンセルしても元データを変更しない", TestAdvancedModeEditSessionIsolationAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("保存失敗時にモード追加と編集を巻き戻す", TestModeSaveFailureRollbackAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
@@ -177,6 +178,51 @@ static Task TestRefreshRateBindingAsync()
            itemBinding.Contains("Path=.", StringComparison.Ordinal) &&
            itemBinding.Contains("Mode=OneWay", StringComparison.Ordinal),
         "リフレッシュレート項目の値が、パスなしのTwoWayバインドへ戻っています。");
+    return Task.CompletedTask;
+}
+
+static Task TestAdvancedModeEditSessionIsolationAsync()
+{
+    var source = SettingsService.CreateUserMode("編集元");
+    source.Display.DeviceName = @"\\.\DISPLAY1";
+    source.Display.RefreshRate = 60;
+    source.Display.HardwareSignature = "original-signature";
+    source.Display.IsTrusted = true;
+    source.WindowPlacements =
+    [
+        new WindowPlacementRule
+        {
+            ProcessName = "original",
+            Placement = new WindowPlacementData { NormalLeft = 10 }
+        }
+    ];
+
+    var session = new AdvancedModeEditSession(source);
+    session.ConfirmDisplay(@"\\.\DISPLAY2", 120, "new-signature");
+    session.ReplaceWindowPlacements(
+    [
+        new WindowPlacementRule
+        {
+            ProcessName = "captured",
+            Placement = new WindowPlacementData { NormalLeft = 20 }
+        }
+    ]);
+
+    Assert(source.Display.DeviceName == @"\\.\DISPLAY1" &&
+           source.Display.RefreshRate == 60 &&
+           source.Display.HardwareSignature == "original-signature" &&
+           source.Display.IsTrusted,
+        "表示設定のテスト結果が、保存前の元モードへ書き込まれました。");
+    Assert(source.WindowPlacements.Count == 1 &&
+           source.WindowPlacements[0].ProcessName == "original" &&
+           source.WindowPlacements[0].Placement.NormalLeft == 10,
+        "キャプチャしたウィンドウ配置が、保存前の元モードへ書き込まれました。");
+    Assert(session.IsDisplayTrusted(@"\\.\DISPLAY2", 120, "new-signature"),
+        "テスト済みの表示設定が確認済みとして保持されませんでした。");
+    Assert(!session.IsDisplayTrusted(@"\\.\DISPLAY2", 60, "new-signature"),
+        "テスト後に変更したリフレッシュレートが確認済みのままです。");
+    Assert(!session.IsDisplayTrusted(@"\\.\DISPLAY1", 120, "new-signature"),
+        "テスト後に変更した対象モニターが確認済みのままです。");
     return Task.CompletedTask;
 }
 
