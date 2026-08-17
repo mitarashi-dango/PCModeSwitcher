@@ -7,6 +7,7 @@ var tests = new List<(string Name, Func<Task> Run)>
 {
     ("既定の9モードと5モード表示", TestDefaultModesAsync),
     ("GAME uses the II-controller image", TestGameModeIconAssetAsync),
+    ("ゲームパッド絵文字をⅡコン表記へ移行", TestGamepadEmojiMigrationAsync),
     ("Support link accepts only the trusted HTTPS Ko-fi host", TestSupportLinkValidationAsync),
     ("Tray prioritizes the main screen mode order", TestTrayModeOrderAsync),
     ("リフレッシュレート表示は一方向バインド", TestRefreshRateBindingAsync),
@@ -103,7 +104,7 @@ static Task TestDefaultModesAsync()
     Assert(settings.Modes.Skip(3).Select(mode => mode.Name)
             .SequenceEqual(["CUSTOM1", "CUSTOM2", "CUSTOM3", "CUSTOM4", "CUSTOM5", "CUSTOM6"]),
         "CUSTOM1〜6の既定名が正しくありません。");
-    Assert(settings.Modes.Take(3).Select(mode => mode.Icon).SequenceEqual(["🎮", "💼", "🖥"]),
+    Assert(settings.Modes.Take(3).Select(mode => mode.Icon).SequenceEqual(["Ⅱコン", "💼", "🖥"]),
         "GAME・WORK・NORMALの既定アイコンが変わっています。");
     Assert(settings.Modes.Skip(3).All(mode => mode.Icon.EndsWith('\uFE0E')),
         "CUSTOM1〜6のアイコンがモノクロの文字表示指定になっていません。");
@@ -124,6 +125,34 @@ static Task TestGameModeIconAssetAsync()
         "GAME does not reference the II-controller image.");
     return Task.CompletedTask;
 }
+
+static async Task TestGamepadEmojiMigrationAsync()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.IconMigrationTests.{Guid.NewGuid():N}");
+    try
+    {
+        var settings = SettingsService.CreateDefaults();
+        settings.Modes[0].Icon = "\U0001F3AE";
+        settings.Modes[1].Icon = "\U0001F3AE\uFE0E";
+        settings.Modes[2].Icon = "前\U0001F3AE\uFE0F後";
+
+        var service = new SettingsService(directory);
+        Assert((await service.SaveAsync(settings)).IsSuccess,
+            "旧ゲームパッドアイコンを含む設定を保存できませんでした。");
+        var loaded = await service.LoadAsync();
+        Assert(loaded.IsSuccess && loaded.Value is not null,
+            "旧ゲームパッドアイコンを含む設定を再読み込みできませんでした。");
+        var migrated = loaded.Value ?? throw new InvalidOperationException("移行後の設定データがありません。");
+        Assert(migrated.Modes.Take(3).Select(mode => mode.Icon)
+                .SequenceEqual(["Ⅱコン", "Ⅱコン", "前Ⅱコン後"]),
+            "通常・白黒・カラーのゲームパッド絵文字がすべてⅡコン表記へ移行されていません。");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
 static Task TestSupportLinkValidationAsync()
 {
     Assert(SupportLinks.TryCreateSupportUri("https://ko-fi.com/nioudachi", out var koFi) &&

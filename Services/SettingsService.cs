@@ -10,6 +10,8 @@ public sealed class SettingsService
     public const int CurrentSchemaVersion = 2;
     public const int MaximumVisibleModeCount = 5;
 
+    private const string IiControllerIcon = "Ⅱコン";
+
     private const string LegacyCustomModeId = "custom";
     private static readonly string[] BuiltInModeIds =
         ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"];
@@ -219,7 +221,7 @@ public sealed class SettingsService
     private static List<PcMode> CreateDefaultModes() =>
     [
         CreateOptimizedMode(
-            "game", "GAME", "🎮",
+            "game", "GAME", IiControllerIcon,
             0, 0, 0, 0,
             PowerSettingsService.BalancedSchemeId,
             WindowsPowerMode.BestPerformance,
@@ -333,7 +335,7 @@ public sealed class SettingsService
         {
             mode.Id = string.IsNullOrWhiteSpace(mode.Id) ? $"user-{Guid.NewGuid():N}" : mode.Id.Trim();
             mode.Name = mode.Name?.Trim() ?? "";
-            mode.Icon = string.IsNullOrWhiteSpace(mode.Icon) ? "●" : mode.Icon;
+            mode.Icon = NormalizeModeIcon(mode.Icon);
             mode.Power ??= new PowerConfiguration();
             mode.Display ??= new DisplayConfiguration();
             mode.Audio ??= new AudioConfiguration();
@@ -429,6 +431,15 @@ public sealed class SettingsService
 
     private static bool ValidAudio(AudioEndpointConfiguration value) =>
         value.VolumePercent is null or >= 0 and <= 100 && Enum.IsDefined(value.Mute);
+
+    private static string NormalizeModeIcon(string? icon)
+    {
+        var value = string.IsNullOrWhiteSpace(icon) ? "●" : icon;
+        return value
+            .Replace("\U0001F3AE\uFE0E", IiControllerIcon, StringComparison.Ordinal)
+            .Replace("\U0001F3AE\uFE0F", IiControllerIcon, StringComparison.Ordinal)
+            .Replace("\U0001F3AE", IiControllerIcon, StringComparison.Ordinal);
+    }
 
     private async Task<OperationResult> SaveJsonAtomicAsync<T>(string path, T value)
     {
