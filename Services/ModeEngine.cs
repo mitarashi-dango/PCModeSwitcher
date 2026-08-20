@@ -18,6 +18,8 @@ public sealed class ModeEngine : IDisposable
     public bool HasActiveSession => _activeSession?.IsAwaitingRestore == true;
     public string? ActiveModeId => _activeSession?.ModeId;
     public string? ActiveModeName => _activeSession?.ModeName;
+    public DateTimeOffset? ActiveModeAppliedUtc =>
+        _activeSession is null ? null : _activeSession.AppliedUtc ?? _activeSession.StartedUtc;
 
     public ModeEngine(
         IEnumerable<IModeActionHandler>? handlers = null,
@@ -194,6 +196,7 @@ public sealed class ModeEngine : IDisposable
             session.IsApplying = false;
             session.IsAwaitingRestore = session.Actions.Any(action =>
                 action.StateCaptured && action.ApplyResult?.Status is ActionExecutionStatus.Succeeded or ActionExecutionStatus.ApplyFailed);
+            session.AppliedUtc = session.IsAwaitingRestore ? DateTimeOffset.UtcNow : null;
             await _sessionStore.SaveAsync(session, CancellationToken.None);
             if (!session.IsAwaitingRestore)
             {

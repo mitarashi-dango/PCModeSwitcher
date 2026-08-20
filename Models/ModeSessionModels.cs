@@ -64,6 +64,7 @@ public sealed class ModeSessionSnapshot
     public string ModeId { get; set; } = "";
     public string ModeName { get; set; } = "";
     public DateTimeOffset StartedUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? AppliedUtc { get; set; }
     public bool IsApplying { get; set; } = true;
     public bool IsAwaitingRestore { get; set; }
     public List<ActionSnapshot> Actions { get; set; } = [];

@@ -32,6 +32,7 @@ internal static partial class LocalizationStrings
         ("Main.Menu.Support", "開発を応援する...", "Support development...", "支持開發..."),
         ("Main.Menu.About", "このソフトについて", "About PC Mode Switcher", "關於 PC Mode Switcher"),
         ("Main.Tagline", "使い方に合わせて、PC設定を1クリックで切り替えます。", "Switch PC settings for the way you use it with one click.", "只要按一下，即可依使用情境切換電腦設定。"),
+        ("Main.RestorePrompt", "元に戻しますか？", "Restore previous settings?", "要還原原先設定嗎？"),
         ("Main.CurrentMode", "現在のモード", "CURRENT MODE", "目前模式"),
         ("Main.Drag", "↔ ドラッグで並べ替え", "↔ Drag to reorder", "↔ 拖曳以排序"),
         ("Main.DragTip", "つかんで左右へドラッグすると表示順を変更できます", "Drag left or right to change the display order", "向左或向右拖曳以變更顯示順序"),
@@ -55,7 +56,7 @@ internal static partial class LocalizationStrings
         ("Settings.MinimizeToTray", "通知領域に格納", "Minimize to notification area", "縮小至通知區域"),
         ("Settings.MinimizeDescription", "アプリは動作を続けます。通知領域アイコンから再表示・終了できます。", "The app keeps running. Use the notification-area icon to show or exit it.", "應用程式會繼續執行。可從通知區域圖示重新顯示或結束。"),
         ("Settings.ExitApplication", "アプリを終了", "Exit the app", "結束應用程式"),
-        ("Settings.ExitDescription", "閉じるボタンでアプリを完全に終了します。ショートカットも停止します。", "The close button exits the app completely and disables its shortcuts.", "按下關閉按鈕會完全結束應用程式，快速鍵也會停止。"),
+        ("Settings.ExitDescription", "閉じるボタンで即座に終了します。適用したモード設定は維持され、ショートカットは停止します。", "The close button exits immediately. Applied mode settings remain in effect, and shortcuts stop working.", "按下關閉按鈕會立即結束。已套用的模式設定會維持，快速鍵則會停止。"),
         ("Settings.ShowTrayNotification", "通知領域へ格納したときに通知を表示", "Show a notification when minimized", "縮小至通知區域時顯示通知"),
         ("Settings.TrayNotificationDescription", "通知はアプリを起動してから最初の1回だけ表示します。", "Shown only once after each app launch.", "每次啟動應用程式後只顯示一次。"),
         ("Settings.VisibleModes", "アプリ画面に表示するモード", "Modes shown in the app", "應用程式畫面顯示的模式"),
@@ -236,7 +237,6 @@ internal static partial class LocalizationStrings
         ("Dialog.DeleteMode", "「{0}」を完全に削除しますか？\n\n［保存］を押すまで削除は確定しません。", "Permanently delete “{0}”?\n\nThe deletion is not finalized until you select Save.", "要永久刪除「{0}」嗎？\n\n按下［儲存］後才會確定刪除。"),
         ("Dialog.DeleteModeTitle", "モードの完全削除", "Delete mode permanently", "永久刪除模式"),
         ("Dialog.HideMode", "このモードをアプリ画面から非表示にしますか？\n\nモード設定は削除されず、［設定］から再表示できます。", "Hide this mode from the app?\n\nIts settings will not be deleted, and it can be shown again in Settings.", "要從應用程式畫面隱藏此模式嗎？\n\n模式設定不會被刪除，可在［設定］中再次顯示。"),
-        ("Dialog.ActiveExit", "モードが適用中です。\n\n［はい］元に戻して終了\n［いいえ］終了を取り消す\n［キャンセル］元に戻さず終了", "A mode is active.\n\nYes: Restore and exit\nNo: Cancel exit\nCancel: Exit without restoring", "模式目前正在套用。\n\n［是］還原並結束\n［否］取消結束\n［取消］不還原並結束"),
         ("Dialog.ForceKill", "強制終了すると、対象アプリの未保存データが失われる可能性があります。続行しますか？", "Force closing may discard unsaved data in the target app. Continue?", "強制結束可能會遺失目標應用程式中未儲存的資料。要繼續嗎？"),
         ("Dialog.ForceKillTitle", "強制終了の警告", "Force-close warning", "強制結束警告"),
         ("Dialog.ReviewTitle", "実行内容を確認", "Review actions", "檢視執行內容"),
@@ -246,10 +246,7 @@ internal static partial class LocalizationStrings
         ("File.ExecutableAllFilter", "実行ファイル (*.exe)|*.exe|すべてのファイル (*.*)|*.*", "Executable files (*.exe)|*.exe|All files (*.*)|*.*", "執行檔 (*.exe)|*.exe|所有檔案 (*.*)|*.*"),
         ("Tray.MinimizedHint", "通知領域に格納しました。ダブルクリックで表示、右クリックの［終了］で終了できます。", "Minimized to the notification area. Double-click to show it, or right-click and choose Exit.", "已縮小至通知區域。按兩下可顯示，或按一下右鍵並選擇［結束］。"),
         ("Tray.AppliedSettings", "モードに登録された設定を適用しました。", "Applied the settings registered to this mode.", "已套用此模式中登錄的設定。"),
-        ("Dialog.IncompleteSession", "前回適用したモードの設定が、元に戻されていない可能性があります。\n\n［はい］今すぐ元に戻す\n［いいえ］内容を確認\n［キャンセル］元に戻さず閉じる", "Settings from the previously applied mode may not have been restored.\n\nYes: Restore now\nNo: Review details\nCancel: Close without restoring", "上次套用模式的設定可能尚未還原。\n\n［是］立即還原\n［否］查看詳細內容\n［取消］不還原並關閉"),
-        ("Dialog.IncompleteSessionTitle", "PC Mode Switcher - 前回の設定を確認", "PC Mode Switcher - Check previous settings", "PC Mode Switcher - 確認上次設定"),
-        ("Dialog.IncompleteDetails", "モード: {0}\n開始: {1}\n元に戻せる変更: {2}\n\nメイン画面の［元に戻す］から元の状態へ戻せます。", "Mode: {0}\nStarted: {1}\nRestorable changes: {2}\n\nUse Restore on the main screen to return to the previous state.", "模式：{0}\n開始：{1}\n可還原的變更：{2}\n\n可使用主畫面的［還原］回到原始狀態。"),
-        ("Dialog.PreviousModeSettings", "前回のモード設定", "Previous mode settings", "上次的模式設定")
+        ("Dialog.AutomaticRecoveryFailed", "モードの適用が途中で中断されたため自動的に元へ戻しましたが、一部を戻せませんでした。\n\n{0}", "Mode application was interrupted, so the app rolled it back automatically, but some items could not be restored.\n\n{0}", "模式套用途中遭到中斷，因此應用程式已自動還原，但部分項目無法恢復。\n\n{0}")
     ];
 
     private static readonly (string Ja, string En, string Zh)[] Messages =

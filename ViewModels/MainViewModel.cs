@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Threading;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.Services;
 using PCModeSwitcher.Views;
@@ -10,6 +11,7 @@ public sealed class MainViewModel : ObservableObject
 {
     public const string CustomModeId = "custom1";
     public const string UnregisteredModeId = "unregistered";
+    internal static readonly TimeSpan RestoreEmphasisDuration = TimeSpan.FromSeconds(30);
 
     private static readonly (string Id, string Icon)[] AdditionalCustomModeIdentities =
     [
@@ -26,8 +28,10 @@ public sealed class MainViewModel : ObservableObject
     private readonly IStartupService _startupService;
     private readonly IGlobalHotkeyService _globalHotkeyService;
     private readonly ModeEngine? _modeEngine;
+    private readonly DispatcherTimer _restoreEmphasisTimer;
     private AppSettings _settings = SettingsService.CreateDefaults();
     private bool _isBusy;
+    private bool _isRestoreEmphasized;
     private string? _currentModeId;
     private string _currentModeName = LocalizationService.Get("Status.Checking");
     private string _currentModeIcon = "…";
@@ -115,6 +119,11 @@ public sealed class MainViewModel : ObservableObject
     public AsyncRelayCommand ToggleMicrophoneCommand { get; }
     public AsyncRelayCommand RestoreModeCommand { get; }
     public bool HasActiveSession => _modeEngine?.HasActiveSession == true;
+    public bool IsRestoreEmphasized
+    {
+        get => _isRestoreEmphasized;
+        private set => SetProperty(ref _isRestoreEmphasized, value);
+    }
 
     public MainViewModel(
         SettingsService settingsService,
@@ -130,6 +139,15 @@ public sealed class MainViewModel : ObservableObject
         _startupService = startupService;
         _globalHotkeyService = globalHotkeyService;
         _modeEngine = modeEngine;
+        _restoreEmphasisTimer = new DispatcherTimer
+        {
+            Interval = RestoreEmphasisDuration
+        };
+        _restoreEmphasisTimer.Tick += (_, _) =>
+        {
+            _restoreEmphasisTimer.Stop();
+            IsRestoreEmphasized = false;
+        };
         ApplyModeCommand = new AsyncRelayCommand(ApplyModeAsync, _ => !IsBusy);
         EditModeCommand = new AsyncRelayCommand(EditModeAsync, _ => !IsBusy);
         ToggleMicrophoneCommand = new AsyncRelayCommand(
@@ -528,6 +546,7 @@ public sealed class MainViewModel : ObservableObject
                 var save = await _settingsService.SaveAsync(_settings);
                 if (!save.IsSuccess) AppendStatusWarning(save.UserMessage);
             }
+            UpdateRestoreEmphasis();
             OnPropertyChanged(nameof(HasActiveSession));
             RestoreModeCommand.RaiseCanExecuteChanged();
             return result;
@@ -556,6 +575,7 @@ public sealed class MainViewModel : ObservableObject
             _settings.LastAppliedModeId = null;
             await _settingsService.SaveAsync(_settings);
             await RefreshCurrentModeCoreAsync();
+            UpdateRestoreEmphasis();
             OnPropertyChanged(nameof(HasActiveSession));
             return result;
         }
@@ -922,11 +942,49 @@ public sealed class MainViewModel : ObservableObject
 
     private void OnModeEngineSessionChanged(object? sender, EventArgs e)
     {
-        Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+        void UpdateSessionPresentation()
         {
+            UpdateRestoreEmphasis();
             OnPropertyChanged(nameof(HasActiveSession));
             RestoreModeCommand.RaiseCanExecuteChanged();
-        }));
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            UpdateSessionPresentation();
+        else
+            dispatcher.BeginInvoke(UpdateSessionPresentation);
+    }
+
+    private void UpdateRestoreEmphasis()
+    {
+        _restoreEmphasisTimer.Stop();
+        var remaining = GetRestoreEmphasisRemaining(
+            HasActiveSession,
+            _modeEngine?.ActiveModeAppliedUtc,
+            DateTimeOffset.UtcNow);
+        IsRestoreEmphasized = remaining > TimeSpan.Zero;
+        if (!IsRestoreEmphasized)
+            return;
+
+        _restoreEmphasisTimer.Interval = remaining;
+        _restoreEmphasisTimer.Start();
+    }
+
+    internal static TimeSpan GetRestoreEmphasisRemaining(
+        bool hasActiveSession,
+        DateTimeOffset? appliedUtc,
+        DateTimeOffset utcNow)
+    {
+        if (!hasActiveSession || appliedUtc is null)
+            return TimeSpan.Zero;
+
+        var elapsed = utcNow - appliedUtc.Value;
+        if (elapsed <= TimeSpan.Zero)
+            return RestoreEmphasisDuration;
+
+        var remaining = RestoreEmphasisDuration - elapsed;
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 
     private void AppendStatusWarning(string message)

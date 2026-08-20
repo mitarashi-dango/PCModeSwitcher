@@ -201,7 +201,7 @@ public partial class App : Wpf.Application
         }));
 
         var exitItem = new Forms.ToolStripMenuItem(LocalizationService.Get("Tray.Exit")) { Tag = "exit" };
-        exitItem.Click += (_, _) => Dispatcher.BeginInvoke(new Action(async () => await ExitApplicationAsync()));
+        exitItem.Click += (_, _) => Dispatcher.BeginInvoke(new Action(ExitApplication));
 
         _trayMenu.Items.Add(loadingItem);
         _trayMenu.Items.Add(new Forms.ToolStripSeparator { Tag = "mode-separator" });
@@ -368,36 +368,29 @@ public partial class App : Wpf.Application
                 Wpf.MessageBoxButton.OK, Wpf.MessageBoxImage.Warning);
             return;
         }
-        if (incomplete.Value is null ||
-            (!incomplete.Value.IsApplying && !incomplete.Value.IsAwaitingRestore)) return;
-
-        var choice = Wpf.MessageBox.Show(
-            LocalizationService.Get("Dialog.IncompleteSession"),
-            LocalizationService.Get("Dialog.IncompleteSessionTitle"),
-            Wpf.MessageBoxButton.YesNoCancel,
-            Wpf.MessageBoxImage.Warning,
-            Wpf.MessageBoxResult.Yes);
-        if (choice == Wpf.MessageBoxResult.Yes)
-        {
-            await viewModel.RestoreModeAsync();
-        }
-        else if (choice == Wpf.MessageBoxResult.No)
-        {
-            Wpf.MessageBox.Show(
-                LocalizationService.Format(
-                    "Dialog.IncompleteDetails",
-                    incomplete.Value.ModeName,
-                    incomplete.Value.StartedUtc.LocalDateTime.ToString("G"),
-                    incomplete.Value.Actions.Count),
-                LocalizationService.Get("Dialog.PreviousModeSettings"),
-                Wpf.MessageBoxButton.OK,
-                Wpf.MessageBoxImage.Information);
-        }
-        else
+        if (ShouldForgetRestoreOnStartup(incomplete.Value))
         {
             viewModel.IgnoreIncompleteSession();
+            return;
+        }
+        if (!NeedsAutomaticRecovery(incomplete.Value)) return;
+
+        var recovery = await viewModel.RestoreModeAsync();
+        if (recovery is { IsSuccess: false })
+        {
+            Wpf.MessageBox.Show(
+                LocalizationService.Format("Dialog.AutomaticRecoveryFailed", viewModel.StatusMessage),
+                "PC Mode Switcher",
+                Wpf.MessageBoxButton.OK,
+                Wpf.MessageBoxImage.Warning);
         }
     }
+
+    internal static bool NeedsAutomaticRecovery(ModeSessionSnapshot? session) =>
+        session?.IsApplying == true;
+
+    internal static bool ShouldForgetRestoreOnStartup(ModeSessionSnapshot? session) =>
+        session is { IsApplying: false };
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
@@ -420,20 +413,8 @@ public partial class App : Wpf.Application
         }
     }
 
-    private async Task ExitApplicationAsync()
+    private void ExitApplication()
     {
-        if (_mainViewModel?.HasActiveSession == true)
-        {
-            var choice = Wpf.MessageBox.Show(
-                LocalizationService.Get("Dialog.ActiveExit"),
-                "PC Mode Switcher",
-                Wpf.MessageBoxButton.YesNoCancel,
-                Wpf.MessageBoxImage.Warning,
-                Wpf.MessageBoxResult.Yes);
-            if (choice == Wpf.MessageBoxResult.No) return;
-            if (choice == Wpf.MessageBoxResult.Yes)
-                await _mainViewModel.RestoreModeAsync();
-        }
         _mainWindow?.AllowClose();
         Shutdown();
     }

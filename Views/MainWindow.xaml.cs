@@ -87,36 +87,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!_allowClose && DataContext is MainViewModel { HasActiveSession: true } activeViewModel)
-        {
-            var choice = MessageBox.Show(
-                LocalizationService.Get("Dialog.ActiveExit"),
-                "PC Mode Switcher",
-                MessageBoxButton.YesNoCancel,
-                MessageBoxImage.Warning,
-                MessageBoxResult.Yes);
-            if (choice == MessageBoxResult.No)
-            {
-                e.Cancel = true;
-                return;
-            }
-            if (choice == MessageBoxResult.Yes)
-            {
-                e.Cancel = true;
-                _ = RestoreThenCloseAsync(activeViewModel);
-                return;
-            }
-            _allowClose = true;
-        }
-
         base.OnClosing(e);
-    }
-
-    private async Task RestoreThenCloseAsync(MainViewModel viewModel)
-    {
-        await viewModel.RestoreModeAsync();
-        _allowClose = true;
-        Close();
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

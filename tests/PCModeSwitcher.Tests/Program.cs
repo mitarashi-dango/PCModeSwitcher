@@ -1,3 +1,4 @@
+using PCModeSwitcher;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.Services;
 using PCModeSwitcher.ViewModels;
@@ -38,6 +39,8 @@ var tests = new List<(string Name, Func<Task> Run)>
     ,("5モード表示順の並べ替え保存", TestVisibleModeReorderAsync)
     ,("追加モードへ午〜亥アイコンを順番に割り当て", TestAdditionalCustomIconsAsync)
     ,("トランザクション適用と逆順復元", TestTransactionalModeEngineAsync)
+    ,("元に戻す案内は30秒後に控えめ表示", TestRestoreEmphasisTimingAsync)
+    ,("起動時は適用済み記録を破棄し適用中断時だけ自動復旧", TestAutomaticRecoveryPolicyAsync)
     ,("破損JSONの退避", TestCorruptedSettingsQuarantineAsync)
     ,("動的モードのエクスポートとインポート", TestProfileExportImportAsync)
     ,("元に戻すショートカットの重複検出", TestRestoreHotkeyConflictAsync),
@@ -1339,7 +1342,8 @@ static async Task TestTransactionalModeEngineAsync()
         Assert(File.Exists(paths.ActiveSessionPath), "適用後のactive-session.jsonがありません。");
         var persisted = await new SessionStore(paths).LoadAsync();
         Assert(persisted.IsSuccess && persisted.Value?.Actions.Count == 3 &&
-               persisted.Value.Actions.All(action => action.StateCaptured),
+               persisted.Value.Actions.All(action => action.StateCaptured) &&
+               persisted.Value.AppliedUtc is not null,
             "アクションスナップショットが保存されていません。");
 
         var restore = await engine.RestoreAsync();
@@ -1353,6 +1357,48 @@ static async Task TestTransactionalModeEngineAsync()
     {
         if (Directory.Exists(directory)) Directory.Delete(directory, true);
     }
+}
+
+static Task TestRestoreEmphasisTimingAsync()
+{
+    var appliedUtc = new DateTimeOffset(2026, 8, 20, 0, 0, 0, TimeSpan.Zero);
+    Assert(MainViewModel.GetRestoreEmphasisRemaining(
+               true, appliedUtc, appliedUtc.AddSeconds(29)) == TimeSpan.FromSeconds(1),
+        "適用後30秒未満で『元に戻しますか？』の強調が終わります。");
+    Assert(MainViewModel.GetRestoreEmphasisRemaining(
+               true, appliedUtc, appliedUtc.AddSeconds(30)) == TimeSpan.Zero,
+        "適用後30秒を過ぎても『元に戻しますか？』が強調されたままです。");
+    Assert(MainViewModel.GetRestoreEmphasisRemaining(
+               false, appliedUtc, appliedUtc.AddSeconds(1)) == TimeSpan.Zero,
+        "復元対象がない状態で『元に戻す』が強調されます。");
+    return Task.CompletedTask;
+}
+
+static Task TestAutomaticRecoveryPolicyAsync()
+{
+    Assert(!App.NeedsAutomaticRecovery(null),
+        "復元対象がないのに自動復旧が必要と判定されました。");
+    Assert(!App.NeedsAutomaticRecovery(new ModeSessionSnapshot
+    {
+        IsApplying = false,
+        IsAwaitingRestore = true
+    }), "正常に適用済みのモードが終了・再起動時に自動復旧されます。");
+    Assert(App.ShouldForgetRestoreOnStartup(new ModeSessionSnapshot
+    {
+        IsApplying = false,
+        IsAwaitingRestore = true
+    }), "正常に適用済みの復元記録が起動時に破棄されません。");
+    Assert(App.NeedsAutomaticRecovery(new ModeSessionSnapshot
+    {
+        IsApplying = true,
+        IsAwaitingRestore = false
+    }), "適用途中で中断されたモードが自動復旧されません。");
+    Assert(!App.ShouldForgetRestoreOnStartup(new ModeSessionSnapshot
+    {
+        IsApplying = true,
+        IsAwaitingRestore = false
+    }), "適用途中で中断された復元記録が自動復旧前に破棄されます。");
+    return Task.CompletedTask;
 }
 
 static async Task TestCorruptedSettingsQuarantineAsync()
