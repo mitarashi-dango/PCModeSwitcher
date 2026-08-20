@@ -10,9 +10,13 @@ public static class AppLanguages
     public const string System = "system";
     public const string Japanese = "ja-JP";
     public const string English = "en-US";
+    public const string SimplifiedChinese = "zh-Hans";
     public const string TraditionalChinese = "zh-Hant";
+    public const string Spanish = "es-ES";
+    public const string Esperanto = "eo";
 
-    public static readonly string[] All = [System, Japanese, English, TraditionalChinese];
+    public static readonly string[] All =
+        [System, Japanese, English, SimplifiedChinese, TraditionalChinese, Spanish, Esperanto];
 }
 
 public sealed class LocalizationService : INotifyPropertyChanged
@@ -21,6 +25,9 @@ public sealed class LocalizationService : INotifyPropertyChanged
     private static readonly Dictionary<string, string> Japanese = LocalizationStrings.Create(0);
     private static readonly Dictionary<string, string> English = LocalizationStrings.Create(1);
     private static readonly Dictionary<string, string> TraditionalChinese = LocalizationStrings.Create(2);
+    private static readonly Dictionary<string, string> SimplifiedChinese = LocalizationStrings.Create(3);
+    private static readonly Dictionary<string, string> Spanish = LocalizationStrings.Create(4);
+    private static readonly Dictionary<string, string> Esperanto = LocalizationStrings.Create(5);
     private IReadOnlyDictionary<string, string> _strings = Japanese;
     private string _languageSetting = AppLanguages.System;
 
@@ -54,7 +61,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
         Current._strings = resolved switch
         {
             AppLanguages.English => English,
+            AppLanguages.SimplifiedChinese => SimplifiedChinese,
             AppLanguages.TraditionalChinese => TraditionalChinese,
+            AppLanguages.Spanish => Spanish,
+            AppLanguages.Esperanto => Esperanto,
             _ => Japanese
         };
 
@@ -83,15 +93,19 @@ public sealed class LocalizationService : INotifyPropertyChanged
             : text;
     }
 
-    private static string ResolveSystemLanguage(CultureInfo culture)
+    internal static string ResolveSystemLanguage(CultureInfo culture)
     {
-        if (culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase) &&
-            !culture.Name.Contains("Hans", StringComparison.OrdinalIgnoreCase) &&
-            !culture.Name.Equals("zh-CN", StringComparison.OrdinalIgnoreCase) &&
-            !culture.Name.Equals("zh-SG", StringComparison.OrdinalIgnoreCase))
-            return AppLanguages.TraditionalChinese;
+        if (culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+            return culture.Name.Contains("Hant", StringComparison.OrdinalIgnoreCase) ||
+                   culture.Name.Equals("zh-TW", StringComparison.OrdinalIgnoreCase) ||
+                   culture.Name.Equals("zh-HK", StringComparison.OrdinalIgnoreCase) ||
+                   culture.Name.Equals("zh-MO", StringComparison.OrdinalIgnoreCase)
+                ? AppLanguages.TraditionalChinese
+                : AppLanguages.SimplifiedChinese;
         if (culture.TwoLetterISOLanguageName.Equals("en", StringComparison.OrdinalIgnoreCase))
             return AppLanguages.English;
+        if (culture.TwoLetterISOLanguageName.Equals("es", StringComparison.OrdinalIgnoreCase))
+            return AppLanguages.Spanish;
         return AppLanguages.Japanese;
     }
 }

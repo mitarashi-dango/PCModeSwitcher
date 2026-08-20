@@ -120,6 +120,11 @@ internal static partial class LocalizationStrings
     {
         foreach (var message in ServiceMessages)
             values["Message." + message.Ja] =
-                language switch { 1 => message.En, 2 => message.Zh, _ => message.Ja };
+                language switch
+                {
+                    1 or 4 or 5 => message.En,
+                    2 or 3 => message.Zh,
+                    _ => message.Ja
+                };
     }
 }

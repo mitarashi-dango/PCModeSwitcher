@@ -7,7 +7,10 @@ internal static partial class LocalizationStrings
         ("Language.System", "既定値（Windows の表示言語）", "Default (Windows display language)", "預設值（Windows 顯示語言）"),
         ("Language.Japanese", "日本語", "Japanese", "日文"),
         ("Language.English", "English", "English", "英文"),
+        ("Language.SimplifiedChinese", "簡体字中国語", "Simplified Chinese", "簡體中文"),
         ("Language.TraditionalChinese", "繁體中文", "Traditional Chinese", "繁體中文"),
+        ("Language.Spanish", "スペイン語", "Spanish", "西班牙文"),
+        ("Language.Esperanto", "エスペラント（実験的）", "Esperanto (experimental)", "世界語（實驗性）"),
         ("Common.Apply", "適用", "Apply", "套用"),
         ("Common.Edit", "編集", "Edit", "編輯"),
         ("Common.Cancel", "キャンセル", "Cancel", "取消"),
@@ -45,7 +48,7 @@ internal static partial class LocalizationStrings
         ("Settings.Title", "アプリ設定", "App settings", "應用程式設定"),
         ("Settings.Description", "表示言語、表示するモード、起動方法、閉じるボタン、切り替えキーを設定します。", "Configure the display language, visible modes, startup, close button, and shortcuts.", "設定顯示語言、顯示模式、啟動方式、關閉按鈕及快速鍵。"),
         ("Settings.Language", "表示言語", "Display language", "顯示語言"),
-        ("Settings.LanguageDescription", "既定値ではWindowsの表示言語を使います。日本語・English・繁體中文から固定することもできます。", "Default follows the Windows display language. You can also lock the app to Japanese, English, or Traditional Chinese.", "預設值會依照 Windows 顯示語言。也可以固定使用日文、英文或繁體中文。"),
+        ("Settings.LanguageDescription", "既定値ではWindowsの表示言語を使います。日本語・English・簡体字中国語・繁體中文・Español・実験的なEsperantoから固定することもできます。", "Default follows the Windows display language. You can also choose Japanese, English, Simplified Chinese, Traditional Chinese, Spanish, or experimental Esperanto.", "預設值會依照 Windows 顯示語言。也可以固定使用日文、英文、簡體中文、繁體中文、西班牙文或實驗性的世界語。"),
         ("Settings.MicrophoneFeature", "マイク機能", "Microphone controls", "麥克風功能"),
         ("Settings.EnableMicrophone", "マイク関連の表示と操作を有効にする", "Enable microphone displays and controls", "啟用麥克風顯示與操作"),
         ("Settings.MicrophoneDescription", "OFFにすると画面とモード編集からマイク項目を隠し、モード適用時もマイクを変更しません。保存済みのマイク設定は保持されます。", "When off, microphone options are hidden and applying a mode will not change the microphone. Saved settings are kept.", "關閉後會隱藏畫面及模式編輯中的麥克風項目，套用模式時也不變更麥克風。已儲存的設定會保留。"),
@@ -333,12 +336,25 @@ internal static partial class LocalizationStrings
     {
         var values = Ui.ToDictionary(
             item => item.Key,
-            item => language switch { 1 => item.En, 2 => item.Zh, _ => item.Ja },
+            item => language switch
+            {
+                1 or 4 or 5 => item.En,
+                2 or 3 => item.Zh,
+                _ => item.Ja
+            },
             StringComparer.Ordinal);
         foreach (var message in Messages)
             values["Message." + message.Ja] =
-                language switch { 1 => message.En, 2 => message.Zh, _ => message.Ja };
+                language switch
+                {
+                    1 or 4 or 5 => message.En,
+                    2 or 3 => message.Zh,
+                    _ => message.Ja
+                };
         AddServiceMessages(values, language);
+        if (language == 3) ConvertToSimplifiedChinese(values);
+        if (language == 4) AddSpanishOverrides(values);
+        if (language == 5) AddEsperantoOverrides(values);
         return values;
     }
 }

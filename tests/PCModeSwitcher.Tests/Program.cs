@@ -2,6 +2,7 @@ using PCModeSwitcher;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.Services;
 using PCModeSwitcher.ViewModels;
+using System.Globalization;
 using System.Text.Json;
 
 var tests = new List<(string Name, Func<Task> Run)>
@@ -57,7 +58,7 @@ foreach (var test in tests)
     }
     catch (Exception ex)
     {
-        failures.Add($"FAIL: {test.Name}: {ex.Message}");
+        failures.Add($"FAIL: {test.Name}: {ex}");
         Console.WriteLine(failures[^1]);
     }
 }
@@ -1501,6 +1502,42 @@ static async Task TestLocalizationAsync()
             "繁体字UIを読み込めませんでした。");
         Assert(card.DisplaySummary.StartsWith("插入電源", StringComparison.Ordinal),
             "繁体字のカード要約へ切り替わりませんでした。");
+
+        LocalizationService.SetLanguage(AppLanguages.SimplifiedChinese);
+        Assert(LocalizationService.Get("Settings.Title") == "应用程序设置",
+            "简体字UIを読み込めませんでした。");
+        Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
+               "无法保存模式设置。",
+            "简体字の結果メッセージへ切り替わりませんでした。");
+
+        LocalizationService.SetLanguage(AppLanguages.Spanish);
+        Assert(LocalizationService.Get("Settings.Title") == "Configuración de la aplicación",
+            "スペイン語UIを読み込めませんでした。");
+        Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
+               "No se pudo guardar la configuración de los modos.",
+            "スペイン語の結果メッセージへ切り替わりませんでした。");
+        Assert(card.DisplaySummary.StartsWith("Conectado", StringComparison.Ordinal),
+            "スペイン語のカード要約へ切り替わりませんでした。");
+
+        LocalizationService.SetLanguage(AppLanguages.Esperanto);
+        Assert(LocalizationService.Get("Settings.Title") == "Agordoj de la aplikaĵo",
+            "エスペラントUIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Language.Esperanto") == "Esperanto (eksperimenta)",
+            "エスペラントの実験的表示がありません。");
+        Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
+               "Ne eblis konservi la reĝimajn agordojn.",
+            "エスペラントの結果メッセージへ切り替わりませんでした。");
+        Assert(card.DisplaySummary.StartsWith("Konektita", StringComparison.Ordinal),
+            "エスペラントのカード要約へ切り替わりませんでした。");
+        Assert(LocalizationService.ResolveSystemLanguage(CultureInfo.GetCultureInfo("zh-CN")) ==
+               AppLanguages.SimplifiedChinese,
+            "中国本土の表示言語を簡体字として判定できませんでした。");
+        Assert(LocalizationService.ResolveSystemLanguage(CultureInfo.GetCultureInfo("zh-TW")) ==
+               AppLanguages.TraditionalChinese,
+            "台湾の表示言語を繁体字として判定できませんでした。");
+        Assert(LocalizationService.ResolveSystemLanguage(CultureInfo.GetCultureInfo("es-MX")) ==
+               AppLanguages.Spanish,
+            "スペイン語圏の表示言語をスペイン語として判定できませんでした。");
         Assert(LocalizationService.Normalize("invalid") == AppLanguages.System,
             "不正な表示言語が既定値へ戻りませんでした。");
     }

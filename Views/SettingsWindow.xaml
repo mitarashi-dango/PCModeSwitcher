@@ -26,7 +26,10 @@
               <ComboBoxItem Tag="system" Content="{loc:Loc Language.System}"/>
               <ComboBoxItem Tag="ja-JP" Content="{loc:Loc Language.Japanese}"/>
               <ComboBoxItem Tag="en-US" Content="{loc:Loc Language.English}"/>
+              <ComboBoxItem Tag="zh-Hans" Content="{loc:Loc Language.SimplifiedChinese}"/>
               <ComboBoxItem Tag="zh-Hant" Content="{loc:Loc Language.TraditionalChinese}"/>
+              <ComboBoxItem Tag="es-ES" Content="{loc:Loc Language.Spanish}"/>
+              <ComboBoxItem Tag="eo" Content="{loc:Loc Language.Esperanto}"/>
             </ComboBox>
             <TextBlock Text="{loc:Loc Settings.LanguageDescription}"
                        Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0"/>
