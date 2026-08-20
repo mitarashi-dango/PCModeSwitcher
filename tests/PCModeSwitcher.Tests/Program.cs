@@ -617,8 +617,11 @@ static async Task TestUpdateNotificationStateAsync()
     var testDirectory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.UpdateTests.{Guid.NewGuid():N}");
     try
     {
+        var appVersion = typeof(MainViewModel).Assembly.GetName().Version ?? new Version(0, 0, 0);
+        var availableTag = $"v{appVersion.Major}.{appVersion.Minor}.{Math.Max(0, appVersion.Build) + 1}";
+        var newerTag = $"v{appVersion.Major}.{appVersion.Minor}.{Math.Max(0, appVersion.Build) + 2}";
         var settingsService = new SettingsService(testDirectory);
-        var updateService = new FakeUpdateCheckService("v0.5.8");
+        var updateService = new FakeUpdateCheckService(availableTag);
         var viewModel = new MainViewModel(
             settingsService,
             new PowerSettingsService(
@@ -637,7 +640,7 @@ static async Task TestUpdateNotificationStateAsync()
         var result = await viewModel.CheckForUpdatesAsync();
         Assert(result.IsSuccess && result.Value?.IsNewer == true &&
                viewModel.HasAvailableUpdate &&
-               viewModel.UpdateBannerText.Contains("v0.5.8", StringComparison.Ordinal),
+               viewModel.UpdateBannerText.Contains(availableTag, StringComparison.Ordinal),
             "新版を控えめな通知バナーへ反映できませんでした。");
         var nextDelay = viewModel.GetAutomaticUpdateCheckDelay(DateTimeOffset.UtcNow);
         Assert(nextDelay.HasValue &&
@@ -655,15 +658,15 @@ static async Task TestUpdateNotificationStateAsync()
         Assert(!viewModel.HasAvailableUpdate,
             "閉じたバージョンが次の確認で再表示されました。");
 
-        updateService.SetVersion("v0.5.9");
+        updateService.SetVersion(newerTag);
         _ = await viewModel.CheckForUpdatesAsync();
         Assert(viewModel.HasAvailableUpdate &&
                await viewModel.TryMarkUpdateNotificationShownAsync(),
             "さらに新しいバージョンが通知されませんでした。");
 
         var saved = await settingsService.LoadAsync();
-        Assert(saved.IsSuccess && saved.Value?.DismissedUpdateVersion == "v0.5.8" &&
-               saved.Value.NotifiedUpdateVersion == "v0.5.9" &&
+        Assert(saved.IsSuccess && saved.Value?.DismissedUpdateVersion == availableTag &&
+               saved.Value.NotifiedUpdateVersion == newerTag &&
                saved.Value.LastUpdateCheckUtc is not null,
             "版ごとの通知状態が設定へ保存されていません。");
     }
