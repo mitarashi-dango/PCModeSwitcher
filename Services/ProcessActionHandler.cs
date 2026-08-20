@@ -6,6 +6,9 @@ namespace PCModeSwitcher.Services;
 
 public sealed class ProcessActionHandler : IModeActionHandler
 {
+    private const int IdentityResolutionAttempts = 20;
+    private static readonly TimeSpan IdentityResolutionDelay = TimeSpan.FromMilliseconds(100);
+
     private static readonly HashSet<string> ProtectedNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "explorer", "dwm", "winlogon", "csrss", "lsass", "services", "smss", "system", "registry"
@@ -13,6 +16,32 @@ public sealed class ProcessActionHandler : IModeActionHandler
 
     public string Id => "processes";
     public string DisplayName => "アプリの終了・起動";
+
+    private readonly Func<string, IReadOnlyCollection<string>, string?, OperationResult<Process>> _startProcess;
+    private readonly Func<Process, string, ProcessIdentity?> _resolveIdentity;
+    private readonly Func<string, IReadOnlyCollection<int>> _getExistingProcessIds;
+    private readonly int _identityResolutionAttempts;
+    private readonly TimeSpan _identityResolutionDelay;
+
+    public ProcessActionHandler()
+        : this(Start, TryGetIdentity, GetProcessIdsByName,
+            IdentityResolutionAttempts, IdentityResolutionDelay)
+    {
+    }
+
+    internal ProcessActionHandler(
+        Func<string, IReadOnlyCollection<string>, string?, OperationResult<Process>> startProcess,
+        Func<Process, string, ProcessIdentity?> resolveIdentity,
+        Func<string, IReadOnlyCollection<int>> getExistingProcessIds,
+        int identityResolutionAttempts = IdentityResolutionAttempts,
+        TimeSpan? identityResolutionDelay = null)
+    {
+        _startProcess = startProcess;
+        _resolveIdentity = resolveIdentity;
+        _getExistingProcessIds = getExistingProcessIds;
+        _identityResolutionAttempts = Math.Max(1, identityResolutionAttempts);
+        _identityResolutionDelay = identityResolutionDelay ?? IdentityResolutionDelay;
+    }
 
     public Task<ActionPreflightResult> PreflightAsync(ModeActionContext context, CancellationToken cancellationToken)
     {
@@ -45,7 +74,7 @@ public sealed class ProcessActionHandler : IModeActionHandler
             {
                 using (process)
                 {
-                    var identity = TryGetIdentity(process);
+                    var identity = TryGetIdentity(process, rule.ExecutablePath);
                     if (identity is null)
                     {
                         errors.Add($"{rule.ExecutablePath}: プロセス情報を確認できません。");
@@ -96,27 +125,41 @@ public sealed class ProcessActionHandler : IModeActionHandler
                 await Task.Delay(item.DelayMilliseconds, cancellationToken);
             if (!item.AllowAdditionalInstance && IsRunning(item.Target))
                 continue;
-            var launch = Start(item.Target, item.Arguments, item.WorkingDirectory);
+            var launchRequestedUtc = DateTimeOffset.UtcNow;
+            var preexistingProcessIds = item.CloseOnRestore
+                ? _getExistingProcessIds(item.Target)
+                : [];
+            var launch = _startProcess(item.Target, item.Arguments, item.WorkingDirectory);
             if (!launch.IsSuccess || launch.Value is null)
             {
                 errors.Add($"{item.Target}: {launch.UserMessage}");
                 continue;
             }
             using var process = launch.Value;
-            var identity = TryGetIdentity(process);
+            ProcessIdentity? identity;
+            try
+            {
+                identity = await RetryResolveIdentityAsync(
+                    () => _resolveIdentity(process, item.Target),
+                    _identityResolutionAttempts,
+                    _identityResolutionDelay,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                AddTrackingRecord(
+                    context.Session, item, null, launchRequestedUtc, preexistingProcessIds);
+                throw;
+            }
             if (identity is null)
             {
                 errors.Add($"{item.Target}: 起動したプロセスを追跡できません。");
+                AddTrackingRecord(
+                    context.Session, item, null, launchRequestedUtc, preexistingProcessIds);
                 continue;
             }
-            context.Session.LaunchedProcesses.Add(new TrackedProcess
-            {
-                ProcessId = identity.ProcessId,
-                StartTimeUtc = identity.StartTimeUtc,
-                ExecutablePath = identity.ExecutablePath,
-                CloseOnRestore = item.CloseOnRestore,
-                RuleId = item.Id
-            });
+            AddTrackingRecord(
+                context.Session, item, identity, launchRequestedUtc, preexistingProcessIds);
         }
 
         return ActionResults.Create(
@@ -135,20 +178,28 @@ public sealed class ProcessActionHandler : IModeActionHandler
         foreach (var tracked in context.Session.LaunchedProcesses.Where(value => value.CloseOnRestore))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var process = GetMatchingProcess(tracked.ProcessId, tracked.StartTimeUtc, tracked.ExecutablePath);
-            if (process is null) continue;
-            using (process)
+            var processes = GetProcessesForRestore(tracked);
+            if (processes is null)
             {
-                try
+                errors.Add($"{tracked.ExecutablePath}: 起動時に追跡できなかったため、終了を確認できません。");
+                continue;
+            }
+
+            foreach (var process in processes)
+            {
+                using (process)
                 {
-                    if (process.MainWindowHandle != IntPtr.Zero)
-                        process.CloseMainWindow();
-                    if (!await WaitForExitAsync(process, TimeSpan.FromSeconds(5), cancellationToken))
-                        errors.Add($"{Path.GetFileName(tracked.ExecutablePath)}: 通常終了しませんでした。");
-                }
-                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
-                {
-                    errors.Add($"{tracked.ExecutablePath}: {ex.Message}");
+                    try
+                    {
+                        if (process.MainWindowHandle != IntPtr.Zero)
+                            process.CloseMainWindow();
+                        if (!await WaitForExitAsync(process, TimeSpan.FromSeconds(5), cancellationToken))
+                            errors.Add($"{Path.GetFileName(tracked.ExecutablePath)}: 通常終了しませんでした。");
+                    }
+                    catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+                    {
+                        errors.Add($"{tracked.ExecutablePath}: {ex.Message}");
+                    }
                 }
             }
         }
@@ -228,18 +279,75 @@ public sealed class ProcessActionHandler : IModeActionHandler
         return Process.GetProcessesByName(name).Where(process => Matches(process, path)).ToList();
     }
 
-    private static ProcessIdentity? TryGetIdentity(Process process)
+    internal static async Task<ProcessIdentity?> RetryResolveIdentityAsync(
+        Func<ProcessIdentity?> resolve,
+        int attempts,
+        TimeSpan retryDelay,
+        CancellationToken cancellationToken)
     {
+        for (var attempt = 0; attempt < Math.Max(1, attempts); attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var identity = resolve();
+            if (identity is not null)
+                return identity;
+            if (attempt + 1 < attempts)
+                await Task.Delay(retryDelay, cancellationToken);
+        }
+        return null;
+    }
+
+    private static void AddTrackingRecord(
+        ModeSessionSnapshot session,
+        LaunchItem item,
+        ProcessIdentity? identity,
+        DateTimeOffset launchRequestedUtc,
+        IReadOnlyCollection<int> preexistingProcessIds)
+    {
+        if (identity is null && !item.CloseOnRestore)
+            return;
+
+        session.LaunchedProcesses.Add(new TrackedProcess
+        {
+            ProcessId = identity?.ProcessId ?? 0,
+            StartTimeUtc = identity?.StartTimeUtc ?? launchRequestedUtc,
+            ExecutablePath = identity?.ExecutablePath ?? item.Target,
+            CloseOnRestore = item.CloseOnRestore,
+            RuleId = item.Id,
+            RequiresFallbackLookup = identity is null || !identity.ExecutablePathVerified,
+            LaunchRequestedUtc = launchRequestedUtc,
+            PreexistingProcessIds = [.. preexistingProcessIds]
+        });
+    }
+
+    private static ProcessIdentity? TryGetIdentity(Process process, string expectedPath)
+    {
+        int processId;
+        DateTimeOffset startTimeUtc;
         try
         {
-            var path = process.MainModule?.FileName;
-            if (string.IsNullOrWhiteSpace(path)) return null;
-            return new ProcessIdentity(process.Id, process.StartTime.ToUniversalTime(), Path.GetFullPath(path));
+            processId = process.Id;
+            startTimeUtc = process.StartTime.ToUniversalTime();
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
         {
             return null;
         }
+
+        try
+        {
+            var path = process.MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(path))
+                return new ProcessIdentity(processId, startTimeUtc, Path.GetFullPath(path), true);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            // IDと開始時刻は取得済みなので、起動を要求した実行ファイルで追跡を継続する。
+        }
+
+        if (Path.IsPathFullyQualified(expectedPath) && File.Exists(expectedPath))
+            return new ProcessIdentity(processId, startTimeUtc, Path.GetFullPath(expectedPath), false);
+        return null;
     }
 
     private static Process? GetMatchingProcess(int id, DateTimeOffset startUtc, string path)
@@ -247,7 +355,7 @@ public sealed class ProcessActionHandler : IModeActionHandler
         try
         {
             var process = Process.GetProcessById(id);
-            var identity = TryGetIdentity(process);
+            var identity = TryGetIdentity(process, "");
             if (identity is not null &&
                 Math.Abs((identity.StartTimeUtc - startUtc).TotalSeconds) < 1 &&
                 string.Equals(identity.ExecutablePath, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase))
@@ -257,6 +365,125 @@ public sealed class ProcessActionHandler : IModeActionHandler
         }
         catch (ArgumentException) { return null; }
         catch (InvalidOperationException) { return null; }
+    }
+
+    private static IReadOnlyList<Process>? GetProcessesForRestore(TrackedProcess tracked)
+    {
+        if (tracked.ProcessId > 0)
+        {
+            var exact = GetMatchingProcess(
+                tracked.ProcessId, tracked.StartTimeUtc, tracked.ExecutablePath);
+            if (exact is not null)
+                return [exact];
+
+            if (tracked.RequiresFallbackLookup)
+            {
+                var fallbackExact = GetFallbackMatchingProcess(tracked);
+                if (fallbackExact is not null)
+                    return [fallbackExact];
+            }
+        }
+
+        if (!tracked.RequiresFallbackLookup)
+            return [];
+        if (!Path.IsPathFullyQualified(tracked.ExecutablePath))
+            return null;
+
+        var launchRequestedUtc = tracked.LaunchRequestedUtc ?? tracked.StartTimeUtc;
+        var earliestStartUtc = launchRequestedUtc - TimeSpan.FromSeconds(2);
+        var excludedIds = (tracked.PreexistingProcessIds ?? []).ToHashSet();
+        var expectedName = Path.GetFileNameWithoutExtension(tracked.ExecutablePath);
+        var matches = new List<Process>();
+        foreach (var process in Process.GetProcessesByName(expectedName))
+        {
+            try
+            {
+                if (excludedIds.Contains(process.Id) ||
+                    process.StartTime.ToUniversalTime() < earliestStartUtc)
+                {
+                    process.Dispose();
+                    continue;
+                }
+
+                var executablePath = TryGetExecutablePath(process);
+                if (executablePath is not null &&
+                    !string.Equals(executablePath, Path.GetFullPath(tracked.ExecutablePath),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    process.Dispose();
+                    continue;
+                }
+                matches.Add(process);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+            {
+                process.Dispose();
+            }
+        }
+        // 起動時にPIDすら得られなかった場合、候補がないことと終了済みであることは
+        // 区別できない。推測で復元成功にせず、ユーザーが記録を無視できる状態を残す。
+        return matches.Count == 0 && tracked.ProcessId <= 0 ? null : matches;
+    }
+
+    private static Process? GetFallbackMatchingProcess(TrackedProcess tracked)
+    {
+        try
+        {
+            var process = Process.GetProcessById(tracked.ProcessId);
+            var startTimeUtc = process.StartTime.ToUniversalTime();
+            if (Math.Abs((startTimeUtc - tracked.StartTimeUtc).TotalSeconds) >= 1)
+            {
+                process.Dispose();
+                return null;
+            }
+
+            var executablePath = TryGetExecutablePath(process);
+            var pathMatches = executablePath is not null
+                ? string.Equals(executablePath, Path.GetFullPath(tracked.ExecutablePath),
+                    StringComparison.OrdinalIgnoreCase)
+                : string.Equals(process.ProcessName,
+                    Path.GetFileNameWithoutExtension(tracked.ExecutablePath),
+                    StringComparison.OrdinalIgnoreCase);
+            if (pathMatches)
+                return process;
+            process.Dispose();
+            return null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
+                                   System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetExecutablePath(Process process)
+    {
+        try
+        {
+            var path = process.MainModule?.FileName;
+            return string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyCollection<int> GetProcessIdsByName(string target)
+    {
+        if (IsShellTarget(target))
+            return [];
+        var name = Path.GetFileNameWithoutExtension(target);
+        var ids = new List<int>();
+        foreach (var process in Process.GetProcessesByName(name))
+        {
+            using (process)
+            {
+                try { ids.Add(process.Id); }
+                catch (InvalidOperationException) { }
+            }
+        }
+        return ids;
     }
 
     private static async Task<bool> WaitForExitAsync(Process process, TimeSpan timeout, CancellationToken token)
@@ -294,7 +521,11 @@ public sealed class ProcessActionHandler : IModeActionHandler
         return true;
     }
 
-    private sealed record ProcessIdentity(int ProcessId, DateTimeOffset StartTimeUtc, string ExecutablePath);
+    internal sealed record ProcessIdentity(
+        int ProcessId,
+        DateTimeOffset StartTimeUtc,
+        string ExecutablePath,
+        bool ExecutablePathVerified);
 }
 
 public sealed class ProcessMonitorService : IDisposable

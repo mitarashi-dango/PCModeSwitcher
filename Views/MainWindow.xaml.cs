@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -102,6 +103,7 @@ public partial class MainWindow : Window
             viewModel.ShowTrayNotification,
             viewModel.StartWithWindows,
             viewModel.ShowMicrophoneControls,
+            viewModel.CheckForUpdatesAutomatically,
             viewModel.Hotkeys,
             viewModel.AllProfiles,
             viewModel.VisibleModeIds,
@@ -123,7 +125,8 @@ public partial class MainWindow : Window
             settingsWindow.RestoreHotkey,
             settingsWindow.SelectedEnabledModeIds,
             settingsWindow.DeletedModeIds,
-            settingsWindow.SelectedLanguage);
+            settingsWindow.SelectedLanguage,
+            settingsWindow.CheckForUpdatesAutomatically);
         if (!result.IsSuccess)
         {
             MessageBox.Show(
@@ -324,7 +327,12 @@ public partial class MainWindow : Window
     private async void ImportModes_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel) return;
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = LocalizationService.Get("File.SettingsFilter"), CheckFileExists = true };
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = LocalizationService.Get("File.SettingsFilter"),
+            CheckFileExists = true,
+            InitialDirectory = GetProfileDialogInitialDirectory()
+        };
         if (dialog.ShowDialog(this) == true)
             await ShowOperationAsync(await viewModel.ImportProfilesAsync(dialog.FileName));
     }
@@ -336,10 +344,21 @@ public partial class MainWindow : Window
         {
             Filter = LocalizationService.Get("File.SettingsFilter"),
             FileName = $"PCModeSwitcher-profiles-{DateTime.Now:yyyyMMdd}.json",
-            DefaultExt = ".json"
+            DefaultExt = ".json",
+            InitialDirectory = GetProfileDialogInitialDirectory()
         };
         if (dialog.ShowDialog(this) == true)
             await ShowOperationAsync(await viewModel.ExportProfilesAsync(dialog.FileName));
+    }
+
+    internal static string GetProfileDialogInitialDirectory()
+    {
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (!string.IsNullOrWhiteSpace(documents) && Directory.Exists(documents))
+            return documents;
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Directory.Exists(userProfile) ? userProfile : AppContext.BaseDirectory;
     }
 
     private void Diagnostics_Click(object sender, RoutedEventArgs e)
@@ -352,6 +371,78 @@ public partial class MainWindow : Window
     {
         var window = new SupportWindow { Owner = this };
         window.ShowDialog();
+    }
+
+    private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+            return;
+
+        var menuItem = sender as MenuItem;
+        if (menuItem is not null)
+            menuItem.IsEnabled = false;
+        try
+        {
+            var result = await viewModel.CheckForUpdatesAsync();
+            if (!result.IsSuccess || result.Value is null)
+            {
+                MessageBox.Show(
+                    result.UserMessage,
+                    LocalizationService.Get("Update.Title"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!result.Value.IsNewer)
+            {
+                MessageBox.Show(
+                    LocalizationService.Format("Update.UpToDate", viewModel.AppVersion),
+                    LocalizationService.Get("Update.Title"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (MessageBox.Show(
+                    LocalizationService.Format("Update.ManualAvailable", result.Value.DisplayVersion),
+                    LocalizationService.Get("Update.Title"),
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information,
+                    MessageBoxResult.No) == MessageBoxResult.Yes)
+            {
+                ShowExternalLinkResult(viewModel.OpenUpdateReleasePage(result.Value));
+            }
+        }
+        finally
+        {
+            if (menuItem is not null)
+                menuItem.IsEnabled = true;
+        }
+    }
+
+    private void ViewUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+            ShowExternalLinkResult(viewModel.OpenUpdateReleasePage());
+    }
+
+    private async void DismissUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+            await viewModel.DismissAvailableUpdateAsync();
+    }
+
+    private static void ShowExternalLinkResult(OperationResult result)
+    {
+        if (!result.IsSuccess)
+        {
+            MessageBox.Show(
+                result.UserMessage,
+                "PC Mode Switcher",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private void About_Click(object sender, RoutedEventArgs e)

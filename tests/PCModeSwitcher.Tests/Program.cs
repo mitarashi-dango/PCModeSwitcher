@@ -2,7 +2,11 @@ using PCModeSwitcher;
 using PCModeSwitcher.Models;
 using PCModeSwitcher.Services;
 using PCModeSwitcher.ViewModels;
+using System.Diagnostics;
 using System.Globalization;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 
 var tests = new List<(string Name, Func<Task> Run)>
@@ -15,11 +19,14 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("リフレッシュレート表示は一方向バインド", TestRefreshRateBindingAsync),
     ("モード編集で専用アイコン画像を表示", TestAdvancedEditorCustomIconAsync),
     ("モード編集画面が小さい画面へ収まる", TestAdvancedEditorWindowSizeAsync),
+    ("低いメイン画面でもカード下部までスクロールできる", TestMainWindowCardScrollingAsync),
     ("モード編集をキャンセルしても元データを変更しない", TestAdvancedModeEditSessionIsolationAsync),
     ("設定の保存と再読み込み", TestSettingsRoundTripAsync),
     ("保存失敗時にモード追加と編集を巻き戻す", TestModeSaveFailureRollbackAsync),
     ("旧設定からのショートカット設定移行", TestLegacySettingsMigrationAsync),
     ("スタートアップ起動引数の判定", TestStartupLaunchArgumentAsync),
+    ("GitHub安定版の更新確認とURL検証", TestUpdateCheckServiceAsync),
+    ("更新通知の間隔・一度だけ通知・版ごとの非表示", TestUpdateNotificationStateAsync),
     ("ショートカットの入力検証", TestHotkeyValidationAsync),
     ("アプリ設定の連携と失敗時復元", TestAppPreferenceIntegrationAsync),
     ("起動時に前回値より実際のWindows設定を優先", TestInitialModeDetectionAsync),
@@ -44,8 +51,11 @@ var tests = new List<(string Name, Func<Task> Run)>
     ,("起動時は適用済み記録を破棄し適用中断時だけ自動復旧", TestAutomaticRecoveryPolicyAsync)
     ,("破損JSONの退避", TestCorruptedSettingsQuarantineAsync)
     ,("動的モードのエクスポートとインポート", TestProfileExportImportAsync)
+    ,("起動直後のプロセス情報取得失敗を再試行", TestProcessIdentityRetryAsync)
+    ,("未追跡の起動アプリを復元成功扱いにしない", TestUntrackedLaunchRestoreResultAsync)
+    ,("入出力ダイアログはユーザー文書から開始", TestProfileDialogInitialDirectoryAsync)
     ,("元に戻すショートカットの重複検出", TestRestoreHotkeyConflictAsync),
-    ("英語・繁体字と既定言語の保存", TestLocalizationAsync)
+    ("6言語と既定言語の保存", TestLocalizationAsync)
 };
 
 var failures = new List<string>();
@@ -107,6 +117,8 @@ static Task TestDefaultModesAsync()
         "Windowsログイン時の自動起動が既定で有効になっています。");
     Assert(settings.ShowMicrophoneControls,
         "マイク関連の表示が既定で無効になっています。");
+    Assert(settings.CheckForUpdatesAutomatically,
+        "更新の自動確認が既定で有効ではありません。");
     Assert(settings.Modes.Skip(3).Select(mode => mode.Name)
             .SequenceEqual(["CUSTOM1", "CUSTOM2", "CUSTOM3", "CUSTOM4", "CUSTOM5", "CUSTOM6"]),
         "CUSTOM1〜6の既定名が正しくありません。");
@@ -330,6 +342,10 @@ static async Task TestSettingsRoundTripAsync()
         settings.ShowTrayNotification = true;
         settings.StartWithWindows = true;
         settings.ShowMicrophoneControls = false;
+        settings.CheckForUpdatesAutomatically = false;
+        settings.LastUpdateCheckUtc = new DateTimeOffset(2026, 8, 20, 1, 2, 3, TimeSpan.Zero);
+        settings.DismissedUpdateVersion = "v0.5.8";
+        settings.NotifiedUpdateVersion = "v0.5.8";
         settings.Hotkeys[0].Modifiers = HotkeyModifiers.Control | HotkeyModifiers.Alt;
         settings.Hotkeys[0].VirtualKey = 0x47;
         settings.VisibleModeIds = ["game", "custom1", "custom3", "custom5"];
@@ -349,6 +365,11 @@ static async Task TestSettingsRoundTripAsync()
         Assert(loaded.ShowTrayNotification, "通知表示の設定が保持されていません。");
         Assert(loaded.StartWithWindows, "Windowsログイン時の自動起動設定が保持されていません。");
         Assert(!loaded.ShowMicrophoneControls, "マイク関連の表示設定が保持されていません。");
+        Assert(!loaded.CheckForUpdatesAutomatically &&
+               loaded.LastUpdateCheckUtc == settings.LastUpdateCheckUtc &&
+               loaded.DismissedUpdateVersion == "v0.5.8" &&
+               loaded.NotifiedUpdateVersion == "v0.5.8",
+            "更新確認の設定と通知状態が保持されていません。");
         Assert(loaded.Hotkeys[0].Modifiers == (HotkeyModifiers.Control | HotkeyModifiers.Alt) &&
                loaded.Hotkeys[0].VirtualKey == 0x47,
             "GAMEショートカットが保持されていません。");
@@ -474,6 +495,8 @@ static async Task TestLegacySettingsMigrationAsync()
         Assert(!migrated.StartWithWindows, "移行後の自動起動設定が既定値ではありません。");
         Assert(migrated.ShowMicrophoneControls,
             "旧設定からの移行でマイク関連の表示が既定のONになっていません。");
+        Assert(migrated.CheckForUpdatesAutomatically,
+            "旧設定からの移行で更新の自動確認が既定のONになっていません。");
         Assert(migrated.Modes.Select(mode => mode.Id).SequenceEqual(
                 ["game", "work", "normal", "custom1", "custom2", "custom3", "custom4", "custom5", "custom6"]),
             "旧設定をCUSTOM1〜6へ移行できませんでした。");
@@ -534,6 +557,123 @@ static Task TestStartupLaunchArgumentAsync()
     return Task.CompletedTask;
 }
 
+static async Task TestUpdateCheckServiceAsync()
+{
+    var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StringContent(
+            """
+            {
+              "tag_name": "v0.5.8",
+              "html_url": "https://github.com/mitarashi-dango/PCModeSwitcher/releases/tag/v0.5.8",
+              "draft": false,
+              "prerelease": false
+            }
+            """,
+            Encoding.UTF8,
+            "application/json")
+    });
+    using var httpClient = new HttpClient(handler);
+    using var service = new UpdateCheckService(httpClient);
+
+    var update = await service.CheckAsync(new Version(0, 5, 7, 0));
+    Assert(update.IsSuccess && update.Value is
+        {
+            IsNewer: true,
+            DisplayVersion: "v0.5.8"
+        }, "GitHubの最新安定版を新版として認識できませんでした。");
+    Assert(update.Value?.ReleaseUri.AbsoluteUri ==
+           "https://github.com/mitarashi-dango/PCModeSwitcher/releases/tag/v0.5.8",
+        "検証済みのRelease URLが保持されていません。");
+    Assert(handler.UserAgent?.StartsWith("PCModeSwitcher/0.5.7", StringComparison.Ordinal) == true &&
+           handler.ApiVersion == "2022-11-28",
+        "GitHub APIに製品情報またはAPIバージョンを送っていません。");
+
+    var current = await service.CheckAsync(new Version(0, 5, 8, 0));
+    Assert(current.IsSuccess && current.Value?.IsNewer == false,
+        "同じバージョンを新版として通知しています。");
+    Assert(!UpdateCheckService.TryParseRelease(
+            "v0.5.8",
+            "https://example.com/mitarashi-dango/PCModeSwitcher/releases/tag/v0.5.8",
+            out _,
+            out _),
+        "GitHub以外の更新URLが許可されました。");
+    Assert(!UpdateCheckService.TryParseRelease(
+            "v0.5.8-beta",
+            "https://github.com/mitarashi-dango/PCModeSwitcher/releases/tag/v0.5.8-beta",
+            out _,
+            out _),
+        "プレリリース形式のタグが安定版として許可されました。");
+
+    using var failingClient = new HttpClient(
+        new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+    using var failingService = new UpdateCheckService(failingClient);
+    var failed = await failingService.CheckAsync(new Version(0, 5, 7, 0));
+    Assert(!failed.IsSuccess, "GitHub APIの失敗が成功扱いになりました。");
+}
+
+static async Task TestUpdateNotificationStateAsync()
+{
+    var testDirectory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.UpdateTests.{Guid.NewGuid():N}");
+    try
+    {
+        var settingsService = new SettingsService(testDirectory);
+        var updateService = new FakeUpdateCheckService("v0.5.8");
+        var viewModel = new MainViewModel(
+            settingsService,
+            new PowerSettingsService(
+                new FakePowerPolicyAccessor(PowerSettingsService.BalancedSchemeId),
+                () => false),
+            new FakeMicrophoneMuteService(),
+            new FakeStartupService(),
+            new FakeGlobalHotkeyService(),
+            updateCheckService: updateService);
+        await viewModel.InitializeAsync();
+
+        Assert(viewModel.CheckForUpdatesAutomatically &&
+               viewModel.GetAutomaticUpdateCheckDelay(DateTimeOffset.UtcNow) == TimeSpan.Zero,
+            "初回の自動更新確認が有効になっていません。");
+
+        var result = await viewModel.CheckForUpdatesAsync();
+        Assert(result.IsSuccess && result.Value?.IsNewer == true &&
+               viewModel.HasAvailableUpdate &&
+               viewModel.UpdateBannerText.Contains("v0.5.8", StringComparison.Ordinal),
+            "新版を控えめな通知バナーへ反映できませんでした。");
+        var nextDelay = viewModel.GetAutomaticUpdateCheckDelay(DateTimeOffset.UtcNow);
+        Assert(nextDelay.HasValue &&
+               nextDelay.Value > TimeSpan.FromHours(23) &&
+               nextDelay.Value <= TimeSpan.FromHours(24),
+            "更新確認後の次回確認が約24時間後になっていません。");
+        Assert(await viewModel.TryMarkUpdateNotificationShownAsync(),
+            "新版の初回通知を記録できませんでした。");
+        Assert(!await viewModel.TryMarkUpdateNotificationShownAsync(),
+            "同じ新版を通知領域で複数回通知しようとしています。");
+
+        await viewModel.DismissAvailableUpdateAsync();
+        Assert(!viewModel.HasAvailableUpdate, "閉じた新版通知が画面に残っています。");
+        _ = await viewModel.CheckForUpdatesAsync();
+        Assert(!viewModel.HasAvailableUpdate,
+            "閉じたバージョンが次の確認で再表示されました。");
+
+        updateService.SetVersion("v0.5.9");
+        _ = await viewModel.CheckForUpdatesAsync();
+        Assert(viewModel.HasAvailableUpdate &&
+               await viewModel.TryMarkUpdateNotificationShownAsync(),
+            "さらに新しいバージョンが通知されませんでした。");
+
+        var saved = await settingsService.LoadAsync();
+        Assert(saved.IsSuccess && saved.Value?.DismissedUpdateVersion == "v0.5.8" &&
+               saved.Value.NotifiedUpdateVersion == "v0.5.9" &&
+               saved.Value.LastUpdateCheckUtc is not null,
+            "版ごとの通知状態が設定へ保存されていません。");
+    }
+    finally
+    {
+        if (Directory.Exists(testDirectory))
+            Directory.Delete(testDirectory, true);
+    }
+}
+
 static async Task TestAppPreferenceIntegrationAsync()
 {
     var testDirectory = Path.Combine(Path.GetTempPath(), $"PCModeSwitcher.Tests.{Guid.NewGuid():N}");
@@ -575,7 +715,8 @@ static async Task TestAppPreferenceIntegrationAsync()
             true,
             hotkeys,
             ["game", "normal", "custom2", "custom4", "custom6"],
-            false);
+            false,
+            checkForUpdatesAutomatically: false);
         Assert(save.IsSuccess, $"アプリ設定を保存できませんでした: {save.UserMessage}");
         Assert(startup.Enabled, "スタートアップ登録が有効になっていません。");
         Assert(hotkeyService.Bindings.Single(hotkey => hotkey.ModeId == "game").IsConfigured,
@@ -587,6 +728,8 @@ static async Task TestAppPreferenceIntegrationAsync()
                viewModel.Modes.All(mode => !mode.ShowMicrophoneControls) &&
                viewModel.IsMicrophoneOn is null,
             "マイク関連の表示を非表示にできませんでした。");
+        Assert(!viewModel.CheckForUpdatesAutomatically,
+            "更新の自動確認を無効にできませんでした。");
 
         var microphoneApplyCount = microphoneMuteService.ApplyCount;
         var microphoneGetCount = microphoneMuteService.GetCount;
@@ -617,6 +760,8 @@ static async Task TestAppPreferenceIntegrationAsync()
             "連携した表示モード設定がファイルへ保存されていません。");
         Assert(loaded.Value?.ShowMicrophoneControls == false,
             "マイク関連の非表示設定がファイルへ保存されていません。");
+        Assert(loaded.Value?.CheckForUpdatesAutomatically == false,
+            "更新の自動確認設定がファイルへ保存されていません。");
 
         hotkeyService.NextResult = OperationResult.Failure("テスト用の登録失敗です。");
         var failedSave = await viewModel.SetAppPreferencesAsync(
@@ -1309,6 +1454,80 @@ static async Task TestAdditionalCustomIconsAsync()
         if (Directory.Exists(directory)) Directory.Delete(directory, true);
     }
 }
+
+static Task TestMainWindowCardScrollingAsync()
+{
+    var xaml = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory, "TestAssets", "MainWindow.xaml"));
+    Assert(xaml.Contains("MinHeight=\"480\"", StringComparison.Ordinal),
+        "メイン画面の最小高さが低い画面向けになっていません。");
+    Assert(xaml.Contains("VerticalScrollBarVisibility=\"Auto\" CanContentScroll=\"False\"", StringComparison.Ordinal) &&
+           xaml.Contains("Margin=\"28,28,14,28\" VerticalAlignment=\"Top\"", StringComparison.Ordinal) &&
+           xaml.Contains("MinHeight=\"570\"", StringComparison.Ordinal),
+        "カードの下端を含むピクセルスクロール領域が設定されていません。");
+    return Task.CompletedTask;
+}
+
+static async Task TestProcessIdentityRetryAsync()
+{
+    var calls = 0;
+    var expected = new ProcessActionHandler.ProcessIdentity(
+        1234,
+        new DateTimeOffset(2026, 8, 20, 0, 0, 0, TimeSpan.Zero),
+        @"C:\Apps\example.exe",
+        true);
+    var actual = await ProcessActionHandler.RetryResolveIdentityAsync(
+        () => ++calls < 3 ? null : expected,
+        3,
+        TimeSpan.Zero,
+        CancellationToken.None);
+
+    Assert(actual == expected && calls == 3,
+        "一時的なプロセス情報取得失敗後に追跡情報を再取得できませんでした。");
+}
+
+static async Task TestUntrackedLaunchRestoreResultAsync()
+{
+    var handler = new ProcessActionHandler(
+        (_, _, _) => OperationResult<Process>.Success(Process.GetCurrentProcess()),
+        (_, _) => null,
+        _ => [],
+        identityResolutionAttempts: 1,
+        identityResolutionDelay: TimeSpan.Zero);
+    var mode = new PcMode { Id = "process-test", Name = "Process test" };
+    mode.LaunchItems.Add(new LaunchItem
+    {
+        Id = "untracked-launch",
+        Target = Path.Combine(
+            Path.GetTempPath(), $"PCModeSwitcher-untracked-{Guid.NewGuid():N}.exe"),
+        CloseOnRestore = true
+    });
+    var session = new ModeSessionSnapshot { ModeId = mode.Id, ModeName = mode.Name };
+    var context = new ModeActionContext { Mode = mode, Session = session };
+    var snapshot = new ActionSnapshot { ActionId = handler.Id, StateCaptured = true };
+
+    var apply = await handler.ApplyAsync(context, snapshot, CancellationToken.None);
+    Assert(apply.Status == ActionExecutionStatus.ApplyFailed &&
+           session.LaunchedProcesses is [{ RequiresFallbackLookup: true, CloseOnRestore: true }],
+        "追跡に失敗した起動アプリの復元情報が保存されていません。");
+
+    var restore = await handler.RestoreAsync(context, snapshot, CancellationToken.None);
+    Assert(restore.Status == ActionExecutionStatus.RestoreFailed,
+        "追跡できないアプリが残り得る状態を復元成功として扱っています。");
+}
+
+static Task TestProfileDialogInitialDirectoryAsync()
+{
+    var initialDirectory = PCModeSwitcher.Views.MainWindow.GetProfileDialogInitialDirectory();
+    var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+    Assert(Directory.Exists(initialDirectory),
+        "入出力ダイアログの初期フォルダーが存在しません。");
+    if (Directory.Exists(documents))
+        Assert(string.Equals(initialDirectory, documents, StringComparison.OrdinalIgnoreCase),
+            "入出力ダイアログがユーザーのドキュメントから開始されません。");
+    return Task.CompletedTask;
+}
+
 static void Assert(bool condition, string message)
 {
     if (!condition)
@@ -1489,6 +1708,8 @@ static async Task TestLocalizationAsync()
         LocalizationService.SetLanguage(AppLanguages.English);
         Assert(LocalizationService.Get("Settings.Title") == "App settings",
             "英語UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Update.CheckMenu") == "Check for updates...",
+            "英語の更新確認UIを読み込めませんでした。");
         Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
                "Mode settings could not be saved.",
             "英語の結果メッセージへ切り替わりませんでした。");
@@ -1500,12 +1721,18 @@ static async Task TestLocalizationAsync()
         LocalizationService.SetLanguage(AppLanguages.TraditionalChinese);
         Assert(LocalizationService.Get("Settings.Title") == "應用程式設定",
             "繁体字UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Update.Available").Contains("新版本", StringComparison.Ordinal),
+            "繁体字の更新通知UIを読み込めませんでした。");
         Assert(card.DisplaySummary.StartsWith("插入電源", StringComparison.Ordinal),
             "繁体字のカード要約へ切り替わりませんでした。");
 
         LocalizationService.SetLanguage(AppLanguages.SimplifiedChinese);
         Assert(LocalizationService.Get("Settings.Title") == "应用程序设置",
             "简体字UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Settings.CheckForUpdatesAutomatically").Contains(
+                "自动检查",
+                StringComparison.Ordinal),
+            "简体字の更新設定UIを読み込めませんでした。");
         Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
                "无法保存模式设置。",
             "简体字の結果メッセージへ切り替わりませんでした。");
@@ -1513,6 +1740,8 @@ static async Task TestLocalizationAsync()
         LocalizationService.SetLanguage(AppLanguages.Spanish);
         Assert(LocalizationService.Get("Settings.Title") == "Configuración de la aplicación",
             "スペイン語UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Update.CheckMenu") == "Buscar actualizaciones...",
+            "スペイン語の更新確認UIを読み込めませんでした。");
         Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
                "No se pudo guardar la configuración de los modos.",
             "スペイン語の結果メッセージへ切り替わりませんでした。");
@@ -1524,6 +1753,8 @@ static async Task TestLocalizationAsync()
             "エスペラントUIを読み込めませんでした。");
         Assert(LocalizationService.Get("Language.Esperanto") == "Esperanto (eksperimenta)",
             "エスペラントの実験的表示がありません。");
+        Assert(LocalizationService.Get("Update.CheckMenu") == "Kontroli ĝisdatigojn...",
+            "エスペラントの更新確認UIを読み込めませんでした。");
         Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
                "Ne eblis konservi la reĝimajn agordojn.",
             "エスペラントの結果メッセージへ切り替わりませんでした。");
@@ -1578,6 +1809,45 @@ sealed class FakeModeActionHandler(
             Status = ActionExecutionStatus.RestoreSucceeded,
             Message = "復元成功"
         });
+    }
+}
+
+sealed class StubHttpMessageHandler(
+    Func<HttpRequestMessage, HttpResponseMessage> createResponse) : HttpMessageHandler
+{
+    public string? UserAgent { get; private set; }
+    public string? ApiVersion { get; private set; }
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        UserAgent = request.Headers.UserAgent.ToString();
+        ApiVersion = request.Headers.TryGetValues("X-GitHub-Api-Version", out var values)
+            ? values.SingleOrDefault()
+            : null;
+        return Task.FromResult(createResponse(request));
+    }
+}
+
+sealed class FakeUpdateCheckService(string displayVersion) : IUpdateCheckService
+{
+    private string _displayVersion = displayVersion;
+
+    public void SetVersion(string value) => _displayVersion = value;
+
+    public Task<OperationResult<AppUpdateInfo>> CheckAsync(
+        Version currentVersion,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var parsed = Version.Parse(_displayVersion.TrimStart('v', 'V'));
+        var normalized = UpdateCheckService.NormalizeVersion(parsed);
+        return Task.FromResult(OperationResult<AppUpdateInfo>.Success(new AppUpdateInfo(
+            normalized,
+            _displayVersion,
+            new Uri($"https://github.com/mitarashi-dango/PCModeSwitcher/releases/tag/{_displayVersion}"),
+            normalized > UpdateCheckService.NormalizeVersion(currentVersion))));
     }
 }
 

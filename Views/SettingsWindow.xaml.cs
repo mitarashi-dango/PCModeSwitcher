@@ -18,6 +18,7 @@ public partial class SettingsWindow : Window
     public bool ShowTrayNotification { get; private set; }
     public bool StartWithWindows { get; private set; }
     public bool ShowMicrophoneControls { get; private set; }
+    public bool CheckForUpdatesAutomatically { get; private set; }
     public string SelectedLanguage { get; private set; } = AppLanguages.System;
     public ObservableCollection<ModeSettingsItem> ModeItems { get; } = [];
     public IReadOnlyList<ModeHotkey> Hotkeys =>
@@ -35,6 +36,7 @@ public partial class SettingsWindow : Window
         bool showTrayNotification,
         bool startWithWindows,
         bool showMicrophoneControls,
+        bool checkForUpdatesAutomatically,
         IReadOnlyCollection<ModeHotkey> hotkeys,
         IReadOnlyCollection<PcMode> modes,
         IReadOnlyCollection<string> visibleModeIds,
@@ -48,6 +50,7 @@ public partial class SettingsWindow : Window
         ShowTrayNotification = showTrayNotification;
         StartWithWindows = startWithWindows;
         ShowMicrophoneControls = showMicrophoneControls;
+        CheckForUpdatesAutomatically = checkForUpdatesAutomatically;
         SelectedLanguage = LocalizationService.Normalize(language);
         _hotkeys = modes.ToDictionary(
             mode => mode.Id,
@@ -87,6 +90,7 @@ public partial class SettingsWindow : Window
         ShowTrayNotificationOption.IsChecked = showTrayNotification;
         StartWithWindowsOption.IsChecked = startWithWindows;
         ShowMicrophoneControlsOption.IsChecked = showMicrophoneControls;
+        CheckForUpdatesAutomaticallyOption.IsChecked = checkForUpdatesAutomatically;
         LanguageOption.SelectedValue = SelectedLanguage;
         UpdateHotkeyTextBoxes();
     }
@@ -241,6 +245,7 @@ public partial class SettingsWindow : Window
         ShowTrayNotification = ShowTrayNotificationOption.IsChecked == true;
         StartWithWindows = StartWithWindowsOption.IsChecked == true;
         ShowMicrophoneControls = ShowMicrophoneControlsOption.IsChecked == true;
+        CheckForUpdatesAutomatically = CheckForUpdatesAutomaticallyOption.IsChecked == true;
         SelectedLanguage = LanguageOption.SelectedValue as string ?? AppLanguages.System;
         DialogResult = true;
     }

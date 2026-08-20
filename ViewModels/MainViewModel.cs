@@ -12,6 +12,7 @@ public sealed class MainViewModel : ObservableObject
     public const string CustomModeId = "custom1";
     public const string UnregisteredModeId = "unregistered";
     internal static readonly TimeSpan RestoreEmphasisDuration = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan AutomaticUpdateCheckInterval = TimeSpan.FromHours(24);
 
     private static readonly (string Id, string Icon)[] AdditionalCustomModeIdentities =
     [
@@ -28,6 +29,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly IStartupService _startupService;
     private readonly IGlobalHotkeyService _globalHotkeyService;
     private readonly ModeEngine? _modeEngine;
+    private readonly IUpdateCheckService? _updateCheckService;
+    private readonly SemaphoreSlim _updateCheckLock = new(1, 1);
     private readonly DispatcherTimer _restoreEmphasisTimer;
     private AppSettings _settings = SettingsService.CreateDefaults();
     private bool _isBusy;
@@ -37,6 +40,7 @@ public sealed class MainViewModel : ObservableObject
     private string _currentModeIcon = "…";
     private bool? _isMicrophoneOn;
     private string _statusMessage = LocalizationService.Get("Status.Initial");
+    private AppUpdateInfo? _availableUpdate;
 
     public ObservableCollection<ModeCardViewModel> Modes { get; } = [];
     public ObservableCollection<ModeCardViewModel> VisibleModes { get; } = [];
@@ -108,8 +112,24 @@ public sealed class MainViewModel : ObservableObject
     public bool ShowTrayNotification => _settings.ShowTrayNotification;
     public bool StartWithWindows => _settings.StartWithWindows;
     public bool ShowMicrophoneControls => _settings.ShowMicrophoneControls;
+    public bool CheckForUpdatesAutomatically => _settings.CheckForUpdatesAutomatically;
     public string Language => _settings.Language;
     public string AppVersion { get; } = GetAppVersion();
+    public AppUpdateInfo? AvailableUpdate
+    {
+        get => _availableUpdate;
+        private set
+        {
+            if (!SetProperty(ref _availableUpdate, value))
+                return;
+            OnPropertyChanged(nameof(HasAvailableUpdate));
+            OnPropertyChanged(nameof(UpdateBannerText));
+        }
+    }
+    public bool HasAvailableUpdate => AvailableUpdate is not null;
+    public string UpdateBannerText => AvailableUpdate is null
+        ? ""
+        : LocalizationService.Format("Update.Available", AvailableUpdate.DisplayVersion);
     public IReadOnlyList<ModeHotkey> Hotkeys => _settings.Hotkeys.Select(hotkey => hotkey.Copy()).ToList();
     public ModeHotkey RestoreHotkey => _settings.RestoreHotkey.Copy();
     public IReadOnlyList<string> VisibleModeIds => [.. _settings.VisibleModeIds];
@@ -131,7 +151,8 @@ public sealed class MainViewModel : ObservableObject
         IMicrophoneMuteService microphoneMuteService,
         IStartupService startupService,
         IGlobalHotkeyService globalHotkeyService,
-        ModeEngine? modeEngine = null)
+        ModeEngine? modeEngine = null,
+        IUpdateCheckService? updateCheckService = null)
     {
         _settingsService = settingsService;
         _powerService = powerService;
@@ -139,6 +160,7 @@ public sealed class MainViewModel : ObservableObject
         _startupService = startupService;
         _globalHotkeyService = globalHotkeyService;
         _modeEngine = modeEngine;
+        _updateCheckService = updateCheckService;
         _restoreEmphasisTimer = new DispatcherTimer
         {
             Interval = RestoreEmphasisDuration
@@ -183,6 +205,7 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(ShowTrayNotification));
             OnPropertyChanged(nameof(StartWithWindows));
             OnPropertyChanged(nameof(ShowMicrophoneControls));
+            OnPropertyChanged(nameof(CheckForUpdatesAutomatically));
             OnPropertyChanged(nameof(Hotkeys));
             OnPropertyChanged(nameof(VisibleModeIds));
 
@@ -244,7 +267,8 @@ public sealed class MainViewModel : ObservableObject
         ModeHotkey? restoreHotkey = null,
         IReadOnlyCollection<string>? enabledModeIds = null,
         IReadOnlyCollection<string>? deletedModeIds = null,
-        string? language = null)
+        string? language = null,
+        bool? checkForUpdatesAutomatically = null)
     {
         if (!Enum.IsDefined(behavior))
             return OperationResult.Failure("閉じるボタンの動作が正しくありません。");
@@ -294,6 +318,7 @@ public sealed class MainViewModel : ObservableObject
         var previousShowTrayNotification = _settings.ShowTrayNotification;
         var previousStartWithWindows = _settings.StartWithWindows;
         var previousShowMicrophoneControls = _settings.ShowMicrophoneControls;
+        var previousCheckForUpdatesAutomatically = _settings.CheckForUpdatesAutomatically;
         var previousLanguage = _settings.Language;
         var previousModes = _settings.Modes.ToList();
         var previousLastAppliedModeId = _settings.LastAppliedModeId;
@@ -327,6 +352,8 @@ public sealed class MainViewModel : ObservableObject
         _settings.StartWithWindows = startWithWindows;
         _settings.ShowMicrophoneControls =
             showMicrophoneControls ?? _settings.ShowMicrophoneControls;
+        _settings.CheckForUpdatesAutomatically =
+            checkForUpdatesAutomatically ?? _settings.CheckForUpdatesAutomatically;
         _settings.Language = newLanguage;
         _settings.Hotkeys = newHotkeys;
         _settings.RestoreHotkey = newRestoreHotkey;
@@ -347,6 +374,7 @@ public sealed class MainViewModel : ObservableObject
             _settings.ShowTrayNotification = previousShowTrayNotification;
             _settings.StartWithWindows = previousStartWithWindows;
             _settings.ShowMicrophoneControls = previousShowMicrophoneControls;
+            _settings.CheckForUpdatesAutomatically = previousCheckForUpdatesAutomatically;
             _settings.Language = previousLanguage;
             _settings.Modes = previousModes;
             _settings.LastAppliedModeId = previousLastAppliedModeId;
@@ -383,6 +411,89 @@ public sealed class MainViewModel : ObservableObject
             ? LocalizationService.Translate("アプリ設定を保存しました。")
             : LocalizationService.Format("Status.SettingsSavedDeleted", deletedModeIdSet.Count);
         return OperationResult.Success(StatusMessage);
+    }
+
+    public TimeSpan? GetAutomaticUpdateCheckDelay(DateTimeOffset now)
+    {
+        if (!_settings.CheckForUpdatesAutomatically)
+            return null;
+        if (_settings.LastUpdateCheckUtc is not { } lastCheck)
+            return TimeSpan.Zero;
+
+        var remaining = AutomaticUpdateCheckInterval - (now - lastCheck);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    public async Task<OperationResult<AppUpdateInfo>> CheckForUpdatesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_updateCheckService is null)
+        {
+            return OperationResult<AppUpdateInfo>.Failure(
+                LocalizationService.Get("Update.CheckFailed"));
+        }
+
+        await _updateCheckLock.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await _updateCheckService.CheckAsync(
+                GetCurrentAppVersion(),
+                cancellationToken);
+            _settings.LastUpdateCheckUtc = DateTimeOffset.UtcNow;
+
+            if (result.IsSuccess && result.Value is { } update)
+            {
+                AvailableUpdate = update.IsNewer &&
+                    !string.Equals(
+                        _settings.DismissedUpdateVersion,
+                        update.DisplayVersion,
+                        StringComparison.OrdinalIgnoreCase)
+                    ? update
+                    : null;
+            }
+
+            _ = await _settingsService.SaveAsync(_settings);
+            return result;
+        }
+        finally
+        {
+            _updateCheckLock.Release();
+        }
+    }
+
+    public async Task DismissAvailableUpdateAsync(CancellationToken cancellationToken = default)
+    {
+        if (AvailableUpdate is not { } update)
+            return;
+
+        _settings.DismissedUpdateVersion = update.DisplayVersion;
+        AvailableUpdate = null;
+        _ = await _settingsService.SaveAsync(_settings);
+    }
+
+    public async Task<bool> TryMarkUpdateNotificationShownAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (AvailableUpdate is not { } update ||
+            string.Equals(
+                _settings.NotifiedUpdateVersion,
+                update.DisplayVersion,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        _settings.NotifiedUpdateVersion = update.DisplayVersion;
+        _ = await _settingsService.SaveAsync(_settings);
+        return true;
+    }
+
+    public OperationResult OpenUpdateReleasePage(AppUpdateInfo? update = null)
+    {
+        var target = update ?? AvailableUpdate;
+        return target is not null
+            ? ExternalLinkService.Open(target.ReleaseUri)
+            : OperationResult.Failure(LocalizationService.Get("Update.NoReleasePage"));
     }
 
     public Task<ModeApplyResult?> ApplyModeByIdAsync(string modeId)
@@ -855,9 +966,12 @@ public sealed class MainViewModel : ObservableObject
 
     private static string GetAppVersion()
     {
-        var version = typeof(MainViewModel).Assembly.GetName().Version;
-        return version is null ? LocalizationService.Translate("バージョン不明") : $"v{version.ToString(3)}";
+        var version = GetCurrentAppVersion();
+        return $"v{version.ToString(3)}";
     }
+
+    private static Version GetCurrentAppVersion() =>
+        typeof(MainViewModel).Assembly.GetName().Version ?? new Version(0, 0, 0);
 
     private void NotifyAppPreferencesChanged()
     {
@@ -865,6 +979,7 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowTrayNotification));
         OnPropertyChanged(nameof(StartWithWindows));
         OnPropertyChanged(nameof(ShowMicrophoneControls));
+        OnPropertyChanged(nameof(CheckForUpdatesAutomatically));
         OnPropertyChanged(nameof(Language));
         OnPropertyChanged(nameof(Hotkeys));
         OnPropertyChanged(nameof(RestoreHotkey));
@@ -877,6 +992,7 @@ public sealed class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(MicrophoneButtonText));
         OnPropertyChanged(nameof(MicrophoneButtonToolTip));
+        OnPropertyChanged(nameof(UpdateBannerText));
         if (CurrentModeId == UnregisteredModeId)
             CurrentModeName = LocalizationService.Translate("未登録の設定");
         else if (CurrentModeId is null)

@@ -44,6 +44,9 @@ public sealed class TrackedProcess
     public string ExecutablePath { get; set; } = "";
     public bool CloseOnRestore { get; set; }
     public string? RuleId { get; set; }
+    public bool RequiresFallbackLookup { get; set; }
+    public DateTimeOffset? LaunchRequestedUtc { get; set; }
+    public List<int> PreexistingProcessIds { get; set; } = [];
 }
 
 public sealed class ClosedProcessRecord

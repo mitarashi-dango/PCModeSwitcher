@@ -25,10 +25,13 @@ public partial class App : Wpf.Application
     private SingleInstanceCoordinator? _singleInstanceCoordinator;
     private GlobalHotkeyService? _globalHotkeyService;
     private ModeEngine? _modeEngine;
+    private UpdateCheckService? _updateCheckService;
+    private CancellationTokenSource? _updateCheckScheduleCancellation;
     private readonly AppLogger _appLogger = new();
     private bool _trayHintShown;
     private bool _isWindowHiddenToTray;
     private bool _isUnhandledExceptionDialogOpen;
+    private bool _isUpdateBalloonActive;
     private Forms.ToolStripMenuItem? _restoreTrayItem;
 
     protected override async void OnStartup(Wpf.StartupEventArgs e)
@@ -54,13 +57,15 @@ public partial class App : Wpf.Application
         var startupService = new StartupService();
         _globalHotkeyService = new GlobalHotkeyService();
         _modeEngine = new ModeEngine();
+        _updateCheckService = new UpdateCheckService();
         var viewModel = new MainViewModel(
             settingsService,
             powerService,
             microphoneMuteService,
             startupService,
             _globalHotkeyService,
-            _modeEngine);
+            _modeEngine,
+            _updateCheckService);
         var window = new MainWindow { DataContext = viewModel };
         _mainWindow = window;
         _mainViewModel = viewModel;
@@ -88,10 +93,15 @@ public partial class App : Wpf.Application
         viewModel.Modes.CollectionChanged += OnModesCollectionChanged;
         UpdateTrayModeState();
         UpdateTrayIconVisibility(viewModel.CloseButtonBehavior);
+        RestartAutomaticUpdateSchedule(TimeSpan.FromSeconds(30));
     }
 
     protected override void OnExit(Wpf.ExitEventArgs e)
     {
+        _updateCheckScheduleCancellation?.Cancel();
+        _updateCheckScheduleCancellation?.Dispose();
+        _updateCheckScheduleCancellation = null;
+
         if (_trayIcon is not null)
         {
             _trayIcon.Visible = false;
@@ -120,6 +130,9 @@ public partial class App : Wpf.Application
 
         _modeEngine?.Dispose();
         _modeEngine = null;
+
+        _updateCheckService?.Dispose();
+        _updateCheckService = null;
 
         if (_mainViewModel is not null)
         {
@@ -229,6 +242,12 @@ public partial class App : Wpf.Application
                 Dispatcher.Invoke(RestoreMainWindow);
             }
         };
+        _trayIcon.BalloonTipClicked += (_, _) =>
+        {
+            if (_isUpdateBalloonActive)
+                Dispatcher.Invoke(RestoreMainWindow);
+        };
+        _trayIcon.BalloonTipClosed += (_, _) => _isUpdateBalloonActive = false;
     }
 
     private void CreateTrayModeItems()
@@ -419,13 +438,16 @@ public partial class App : Wpf.Application
         Shutdown();
     }
 
-    private void OnWindowHiddenToTray(object? sender, EventArgs e)
+    private async void OnWindowHiddenToTray(object? sender, EventArgs e)
     {
         _isWindowHiddenToTray = true;
         if (_mainViewModel is not null)
         {
             UpdateTrayIconVisibility(_mainViewModel.CloseButtonBehavior);
         }
+
+        if (await TryShowUpdateTrayNotificationAsync())
+            return;
 
         var showNotification = _mainWindow?.DataContext is MainViewModel viewModel &&
             viewModel.ShowTrayNotification;
@@ -520,6 +542,72 @@ public partial class App : Wpf.Application
         {
             RebuildTrayModeItems();
         }
+        else if (e.PropertyName == nameof(MainViewModel.CheckForUpdatesAutomatically))
+        {
+            RestartAutomaticUpdateSchedule(TimeSpan.Zero);
+        }
+    }
+
+    private void RestartAutomaticUpdateSchedule(TimeSpan initialDelay)
+    {
+        _updateCheckScheduleCancellation?.Cancel();
+        _updateCheckScheduleCancellation?.Dispose();
+        _updateCheckScheduleCancellation = null;
+        if (_mainViewModel?.CheckForUpdatesAutomatically != true)
+            return;
+
+        _updateCheckScheduleCancellation = new CancellationTokenSource();
+        _ = RunAutomaticUpdateChecksAsync(
+            initialDelay,
+            _updateCheckScheduleCancellation.Token);
+    }
+
+    private async Task RunAutomaticUpdateChecksAsync(
+        TimeSpan initialDelay,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (initialDelay > TimeSpan.Zero)
+                await Task.Delay(initialDelay, cancellationToken);
+
+            while (_mainViewModel is { } viewModel)
+            {
+                var delay = viewModel.GetAutomaticUpdateCheckDelay(DateTimeOffset.UtcNow);
+                if (delay is null)
+                    return;
+                if (delay.Value > TimeSpan.Zero)
+                    await Task.Delay(delay.Value, cancellationToken);
+
+                var result = await viewModel.CheckForUpdatesAsync(cancellationToken);
+                if (result.IsSuccess && result.Value?.IsNewer == true)
+                    _ = await TryShowUpdateTrayNotificationAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task<bool> TryShowUpdateTrayNotificationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_mainViewModel is not { AvailableUpdate: { } update } viewModel ||
+            (!_isWindowHiddenToTray && _mainWindow?.IsVisible == true) ||
+            _trayIcon is null ||
+            !_trayIcon.Visible ||
+            !await viewModel.TryMarkUpdateNotificationShownAsync(cancellationToken))
+        {
+            return false;
+        }
+
+        _isUpdateBalloonActive = true;
+        _trayIcon.ShowBalloonTip(
+            5000,
+            LocalizationService.Get("Update.NotificationTitle"),
+            LocalizationService.Format("Update.Available", update.DisplayVersion),
+            Forms.ToolTipIcon.Info);
+        return true;
     }
 
     private void UpdateTrayModeState()

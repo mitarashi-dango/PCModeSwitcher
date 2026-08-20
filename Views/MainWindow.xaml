@@ -3,10 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:PCModeSwitcher.Services"
         Title="PC Mode Switcher" Width="1180" Height="720"
-        MinWidth="980" MinHeight="600"
+        MinWidth="980" MinHeight="480"
         WindowStartupLocation="CenterScreen">
   <Grid IsEnabled="{Binding IsInteractionEnabled}">
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
@@ -25,6 +26,8 @@
         <MenuItem Header="{loc:Loc Main.Menu.Diagnostics}" Click="Diagnostics_Click"/>
       </MenuItem>
       <MenuItem Header="{loc:Loc Main.Menu.Help}">
+        <MenuItem Header="{loc:Loc Update.CheckMenu}" Click="CheckForUpdates_Click"/>
+        <Separator/>
         <MenuItem Header="{loc:Loc Main.Menu.Support}" Click="Support_Click"/>
         <Separator/>
         <MenuItem Header="{loc:Loc Main.Menu.About}" Click="About_Click"/>
@@ -145,8 +148,31 @@
       </Grid>
     </Border>
 
-    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="28">
+    <Border Grid.Row="2" Background="#F8FAFC" BorderBrush="#CBD5E1"
+            BorderThickness="0,0,0,1" Padding="28,9"
+            Visibility="{Binding HasAvailableUpdate, Converter={StaticResource BoolToVisibility}}">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="{Binding UpdateBannerText}" Foreground="#334155"
+                   VerticalAlignment="Center" TextWrapping="Wrap"/>
+        <Button Grid.Column="1" Content="{loc:Loc Update.ViewRelease}"
+                Click="ViewUpdate_Click" Margin="16,0,4,0" Padding="10,4"
+                Background="Transparent" BorderThickness="0" Foreground="#2563EB"/>
+        <Button Grid.Column="2" Content="×" Click="DismissUpdate_Click"
+                ToolTip="{loc:Loc Update.Dismiss}" AutomationProperties.Name="{loc:Loc Update.Dismiss}"
+                Width="30" Padding="4" Background="Transparent" BorderThickness="0"
+                Foreground="#64748B" FontSize="16"/>
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" CanContentScroll="False"
+                  HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly">
       <ItemsControl x:Name="ModeCards" ItemsSource="{Binding VisibleModes}"
+                    Margin="28,28,14,28" VerticalAlignment="Top"
                     AllowDrop="True" DragOver="ModeCards_DragOver" Drop="ModeCards_Drop">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -155,7 +181,7 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border x:Name="ModeCardRoot" Style="{StaticResource CardStyle}" MinHeight="420">
+            <Border x:Name="ModeCardRoot" Style="{StaticResource CardStyle}" MinHeight="570">
               <Grid>
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto"/>
@@ -225,7 +251,7 @@
       </ItemsControl>
     </ScrollViewer>
 
-    <Border Grid.Row="3" Background="White" BorderBrush="{StaticResource BorderBrush}"
+    <Border Grid.Row="4" Background="White" BorderBrush="{StaticResource BorderBrush}"
             BorderThickness="0,1,0,0" Padding="28,16">
       <Grid>
         <Grid.ColumnDefinitions>
@@ -239,7 +265,7 @@
       </Grid>
     </Border>
 
-    <Canvas x:Name="DragPreviewLayer" Grid.RowSpan="4" Panel.ZIndex="1000"
+    <Canvas x:Name="DragPreviewLayer" Grid.RowSpan="5" Panel.ZIndex="1000"
             IsHitTestVisible="False" ClipToBounds="True"/>
   </Grid>
 </Window>

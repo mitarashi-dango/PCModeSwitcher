@@ -36,6 +36,20 @@
           </StackPanel>
         </Border>
 
+        <TextBlock Text="{loc:Loc Settings.Updates}" FontSize="18" FontWeight="SemiBold"
+                   Margin="0,0,0,8"/>
+        <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                Background="White" CornerRadius="10" Padding="18" Margin="0,0,0,22">
+          <StackPanel>
+            <CheckBox x:Name="CheckForUpdatesAutomaticallyOption"
+                      Content="{loc:Loc Settings.CheckForUpdatesAutomatically}"
+                      FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Loc Settings.UpdateDescription}"
+                       Foreground="{StaticResource MutedBrush}" Margin="24,4,0,0"
+                       TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+
         <TextBlock Text="{loc:Loc Settings.MicrophoneFeature}" FontSize="18" FontWeight="SemiBold"
                    Margin="0,0,0,8"/>
         <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"

@@ -13,5 +13,8 @@
     <None Include="..\..\Views\AdvancedModeEditorWindow.xaml"
           Link="TestAssets\AdvancedModeEditorWindow.xaml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Views\MainWindow.xaml"
+          Link="TestAssets\MainWindow.xaml"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

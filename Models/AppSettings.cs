@@ -11,6 +11,10 @@ public sealed class AppSettings
     public bool ShowTrayNotification { get; set; }
     public bool StartWithWindows { get; set; }
     public bool ShowMicrophoneControls { get; set; } = true;
+    public bool CheckForUpdatesAutomatically { get; set; } = true;
+    public DateTimeOffset? LastUpdateCheckUtc { get; set; }
+    public string? DismissedUpdateVersion { get; set; }
+    public string? NotifiedUpdateVersion { get; set; }
     public string Language { get; set; } = Services.AppLanguages.System;
     public List<ModeHotkey> Hotkeys { get; set; } = [];
     public List<string> VisibleModeIds { get; set; } = [];
