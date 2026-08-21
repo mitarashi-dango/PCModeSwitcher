@@ -10,6 +10,8 @@ internal static partial class LocalizationStrings
         ("Language.SimplifiedChinese", "簡体字中国語", "Simplified Chinese", "簡體中文"),
         ("Language.TraditionalChinese", "繁體中文", "Traditional Chinese", "繁體中文"),
         ("Language.Spanish", "スペイン語", "Spanish", "西班牙文"),
+        ("Language.Arabic", "アラビア語", "Arabic", "阿拉伯文"),
+        ("Language.Hindi", "ヒンディー語", "Hindi", "印地文"),
         ("Language.Esperanto", "エスペラント（実験的）", "Esperanto (experimental)", "世界語（實驗性）"),
         ("Common.Apply", "適用", "Apply", "套用"),
         ("Common.Edit", "編集", "Edit", "編輯"),
@@ -25,6 +27,7 @@ internal static partial class LocalizationStrings
         ("Common.NoChange", "変更しない", "Do not change", "不變更"),
         ("Common.Unknown", "不明", "Unknown", "不明"),
         ("Main.Menu.Mode", "モード", "Mode", "模式"),
+        ("Main.Menu.RestorePreModeState", "モード適用前の状態に戻す", "Restore state from before applying the mode", "返回模式生效前的狀態"),
         ("Main.Menu.New", "新規作成...", "New...", "新增..."),
         ("Main.Menu.Import", "モード設定を読み込む...", "Import mode settings...", "匯入模式設定..."),
         ("Main.Menu.Export", "モード設定を書き出す...", "Export mode settings...", "匯出模式設定..."),
@@ -58,7 +61,7 @@ internal static partial class LocalizationStrings
         ("Settings.Title", "アプリ設定", "App settings", "應用程式設定"),
         ("Settings.Description", "表示言語、表示するモード、起動方法、閉じるボタン、切り替えキーを設定します。", "Configure the display language, visible modes, startup, close button, and shortcuts.", "設定顯示語言、顯示模式、啟動方式、關閉按鈕及快速鍵。"),
         ("Settings.Language", "表示言語", "Display language", "顯示語言"),
-        ("Settings.LanguageDescription", "既定値ではWindowsの表示言語を使います。日本語・English・簡体字中国語・繁體中文・Español・実験的なEsperantoから固定することもできます。", "Default follows the Windows display language. You can also choose Japanese, English, Simplified Chinese, Traditional Chinese, Spanish, or experimental Esperanto.", "預設值會依照 Windows 顯示語言。也可以固定使用日文、英文、簡體中文、繁體中文、西班牙文或實驗性的世界語。"),
+        ("Settings.LanguageDescription", "既定値ではWindowsの表示言語を使います。日本語・English・簡体字中国語・繁體中文・Español・アラビア語・ヒンディー語・実験的なEsperantoから固定することもできます。", "Default follows the Windows display language. You can also choose Japanese, English, Simplified Chinese, Traditional Chinese, Spanish, Arabic, Hindi, or experimental Esperanto.", "預設值會依照 Windows 顯示語言。也可以固定使用日文、英文、簡體中文、繁體中文、西班牙文、阿拉伯文、印地文或實驗性的世界語。"),
         ("Settings.Updates", "更新", "Updates", "更新"),
         ("Settings.CheckForUpdatesAutomatically", "新しいバージョンを自動的に確認する", "Automatically check for new versions", "自動檢查新版本"),
         ("Settings.UpdateDescription", "起動30秒後、その後は24時間ごとに確認します。新しいバージョンがある時だけ通知します。", "Checks 30 seconds after startup and every 24 hours after that. You are notified only when a new version is available.", "啟動 30 秒後檢查，之後每 24 小時檢查一次。只有新版本可用時才會通知。"),
@@ -351,7 +354,7 @@ internal static partial class LocalizationStrings
             item => item.Key,
             item => language switch
             {
-                1 or 4 or 5 => item.En,
+                1 or 4 or 5 or 6 or 7 => item.En,
                 2 or 3 => item.Zh,
                 _ => item.Ja
             },
@@ -360,7 +363,7 @@ internal static partial class LocalizationStrings
             values["Message." + message.Ja] =
                 language switch
                 {
-                    1 or 4 or 5 => message.En,
+                    1 or 4 or 5 or 6 or 7 => message.En,
                     2 or 3 => message.Zh,
                     _ => message.Ja
                 };
@@ -368,6 +371,8 @@ internal static partial class LocalizationStrings
         if (language == 3) ConvertToSimplifiedChinese(values);
         if (language == 4) AddSpanishOverrides(values);
         if (language == 5) AddEsperantoOverrides(values);
+        if (language == 6) AddArabicOverrides(values);
+        if (language == 7) AddHindiOverrides(values);
         return values;
     }
 }

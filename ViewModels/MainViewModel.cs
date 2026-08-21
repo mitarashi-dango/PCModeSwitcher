@@ -11,7 +11,8 @@ public sealed class MainViewModel : ObservableObject
 {
     public const string CustomModeId = "custom1";
     public const string UnregisteredModeId = "unregistered";
-    internal static readonly TimeSpan RestoreEmphasisDuration = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan RestoreEmphasisDuration = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan RestorePromptDuration = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan AutomaticUpdateCheckInterval = TimeSpan.FromHours(24);
 
     private static readonly (string Id, string Icon)[] AdditionalCustomModeIdentities =
@@ -31,10 +32,11 @@ public sealed class MainViewModel : ObservableObject
     private readonly ModeEngine? _modeEngine;
     private readonly IUpdateCheckService? _updateCheckService;
     private readonly SemaphoreSlim _updateCheckLock = new(1, 1);
-    private readonly DispatcherTimer _restoreEmphasisTimer;
+    private readonly DispatcherTimer _restorePresentationTimer;
     private AppSettings _settings = SettingsService.CreateDefaults();
     private bool _isBusy;
     private bool _isRestoreEmphasized;
+    private bool _isRestorePromptVisible;
     private string? _currentModeId;
     private string _currentModeName = LocalizationService.Get("Status.Checking");
     private string _currentModeIcon = "…";
@@ -144,6 +146,11 @@ public sealed class MainViewModel : ObservableObject
         get => _isRestoreEmphasized;
         private set => SetProperty(ref _isRestoreEmphasized, value);
     }
+    public bool IsRestorePromptVisible
+    {
+        get => _isRestorePromptVisible;
+        private set => SetProperty(ref _isRestorePromptVisible, value);
+    }
 
     public MainViewModel(
         SettingsService settingsService,
@@ -161,15 +168,11 @@ public sealed class MainViewModel : ObservableObject
         _globalHotkeyService = globalHotkeyService;
         _modeEngine = modeEngine;
         _updateCheckService = updateCheckService;
-        _restoreEmphasisTimer = new DispatcherTimer
+        _restorePresentationTimer = new DispatcherTimer
         {
             Interval = RestoreEmphasisDuration
         };
-        _restoreEmphasisTimer.Tick += (_, _) =>
-        {
-            _restoreEmphasisTimer.Stop();
-            IsRestoreEmphasized = false;
-        };
+        _restorePresentationTimer.Tick += (_, _) => UpdateRestorePresentation();
         ApplyModeCommand = new AsyncRelayCommand(ApplyModeAsync, _ => !IsBusy);
         EditModeCommand = new AsyncRelayCommand(EditModeAsync, _ => !IsBusy);
         ToggleMicrophoneCommand = new AsyncRelayCommand(
@@ -657,7 +660,7 @@ public sealed class MainViewModel : ObservableObject
                 var save = await _settingsService.SaveAsync(_settings);
                 if (!save.IsSuccess) AppendStatusWarning(save.UserMessage);
             }
-            UpdateRestoreEmphasis();
+            UpdateRestorePresentation();
             OnPropertyChanged(nameof(HasActiveSession));
             RestoreModeCommand.RaiseCanExecuteChanged();
             return result;
@@ -686,7 +689,7 @@ public sealed class MainViewModel : ObservableObject
             _settings.LastAppliedModeId = null;
             await _settingsService.SaveAsync(_settings);
             await RefreshCurrentModeCoreAsync();
-            UpdateRestoreEmphasis();
+            UpdateRestorePresentation();
             OnPropertyChanged(nameof(HasActiveSession));
             return result;
         }
@@ -1060,7 +1063,7 @@ public sealed class MainViewModel : ObservableObject
     {
         void UpdateSessionPresentation()
         {
-            UpdateRestoreEmphasis();
+            UpdateRestorePresentation();
             OnPropertyChanged(nameof(HasActiveSession));
             RestoreModeCommand.RaiseCanExecuteChanged();
         }
@@ -1072,34 +1075,66 @@ public sealed class MainViewModel : ObservableObject
             dispatcher.BeginInvoke(UpdateSessionPresentation);
     }
 
-    private void UpdateRestoreEmphasis()
+    private void UpdateRestorePresentation()
     {
-        _restoreEmphasisTimer.Stop();
-        var remaining = GetRestoreEmphasisRemaining(
-            HasActiveSession,
-            _modeEngine?.ActiveModeAppliedUtc,
-            DateTimeOffset.UtcNow);
-        IsRestoreEmphasized = remaining > TimeSpan.Zero;
-        if (!IsRestoreEmphasized)
+        _restorePresentationTimer.Stop();
+        var hasActiveSession = HasActiveSession;
+        var appliedUtc = _modeEngine?.ActiveModeAppliedUtc;
+        var utcNow = DateTimeOffset.UtcNow;
+        var emphasisRemaining = GetRestoreEmphasisRemaining(
+            hasActiveSession,
+            appliedUtc,
+            utcNow);
+        var promptRemaining = GetRestorePromptRemaining(
+            hasActiveSession,
+            appliedUtc,
+            utcNow);
+        IsRestoreEmphasized = emphasisRemaining > TimeSpan.Zero;
+        IsRestorePromptVisible = promptRemaining > TimeSpan.Zero;
+        var nextTransition = emphasisRemaining > TimeSpan.Zero
+            ? emphasisRemaining
+            : promptRemaining;
+        if (nextTransition <= TimeSpan.Zero)
             return;
 
-        _restoreEmphasisTimer.Interval = remaining;
-        _restoreEmphasisTimer.Start();
+        _restorePresentationTimer.Interval = nextTransition;
+        _restorePresentationTimer.Start();
     }
 
     internal static TimeSpan GetRestoreEmphasisRemaining(
         bool hasActiveSession,
         DateTimeOffset? appliedUtc,
-        DateTimeOffset utcNow)
+        DateTimeOffset utcNow) =>
+        GetRestorePresentationRemaining(
+            hasActiveSession,
+            appliedUtc,
+            utcNow,
+            RestoreEmphasisDuration);
+
+    internal static TimeSpan GetRestorePromptRemaining(
+        bool hasActiveSession,
+        DateTimeOffset? appliedUtc,
+        DateTimeOffset utcNow) =>
+        GetRestorePresentationRemaining(
+            hasActiveSession,
+            appliedUtc,
+            utcNow,
+            RestorePromptDuration);
+
+    private static TimeSpan GetRestorePresentationRemaining(
+        bool hasActiveSession,
+        DateTimeOffset? appliedUtc,
+        DateTimeOffset utcNow,
+        TimeSpan duration)
     {
         if (!hasActiveSession || appliedUtc is null)
             return TimeSpan.Zero;
 
         var elapsed = utcNow - appliedUtc.Value;
         if (elapsed <= TimeSpan.Zero)
-            return RestoreEmphasisDuration;
+            return duration;
 
-        var remaining = RestoreEmphasisDuration - elapsed;
+        var remaining = duration - elapsed;
         return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 

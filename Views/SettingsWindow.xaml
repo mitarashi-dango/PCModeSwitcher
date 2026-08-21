@@ -29,6 +29,8 @@
               <ComboBoxItem Tag="zh-Hans" Content="{loc:Loc Language.SimplifiedChinese}"/>
               <ComboBoxItem Tag="zh-Hant" Content="{loc:Loc Language.TraditionalChinese}"/>
               <ComboBoxItem Tag="es-ES" Content="{loc:Loc Language.Spanish}"/>
+              <ComboBoxItem Tag="ar-SA" Content="{loc:Loc Language.Arabic}"/>
+              <ComboBoxItem Tag="hi-IN" Content="{loc:Loc Language.Hindi}"/>
               <ComboBoxItem Tag="eo" Content="{loc:Loc Language.Esperanto}"/>
             </ComboBox>
             <TextBlock Text="{loc:Loc Settings.LanguageDescription}"

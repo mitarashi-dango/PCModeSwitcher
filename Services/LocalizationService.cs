@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Windows;
 using System.Windows.Data;
 using System.Windows.Markup;
 
@@ -14,9 +15,11 @@ public static class AppLanguages
     public const string TraditionalChinese = "zh-Hant";
     public const string Spanish = "es-ES";
     public const string Esperanto = "eo";
+    public const string Arabic = "ar-SA";
+    public const string Hindi = "hi-IN";
 
     public static readonly string[] All =
-        [System, Japanese, English, SimplifiedChinese, TraditionalChinese, Spanish, Esperanto];
+        [System, Japanese, English, SimplifiedChinese, TraditionalChinese, Spanish, Arabic, Hindi, Esperanto];
 }
 
 public sealed class LocalizationService : INotifyPropertyChanged
@@ -28,6 +31,8 @@ public sealed class LocalizationService : INotifyPropertyChanged
     private static readonly Dictionary<string, string> SimplifiedChinese = LocalizationStrings.Create(3);
     private static readonly Dictionary<string, string> Spanish = LocalizationStrings.Create(4);
     private static readonly Dictionary<string, string> Esperanto = LocalizationStrings.Create(5);
+    private static readonly Dictionary<string, string> Arabic = LocalizationStrings.Create(6);
+    private static readonly Dictionary<string, string> Hindi = LocalizationStrings.Create(7);
     private IReadOnlyDictionary<string, string> _strings = Japanese;
     private string _languageSetting = AppLanguages.System;
 
@@ -37,6 +42,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
 
     public string LanguageSetting => _languageSetting;
     public string ResolvedLanguage { get; private set; } = AppLanguages.Japanese;
+    public FlowDirection FlowDirection =>
+        ResolvedLanguage == AppLanguages.Arabic
+            ? FlowDirection.RightToLeft
+            : FlowDirection.LeftToRight;
     public string this[string key] => Get(key);
 
     public static bool IsSupported(string? language) =>
@@ -65,6 +74,8 @@ public sealed class LocalizationService : INotifyPropertyChanged
             AppLanguages.TraditionalChinese => TraditionalChinese,
             AppLanguages.Spanish => Spanish,
             AppLanguages.Esperanto => Esperanto,
+            AppLanguages.Arabic => Arabic,
+            AppLanguages.Hindi => Hindi,
             _ => Japanese
         };
 
@@ -73,6 +84,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
         CultureInfo.DefaultThreadCurrentUICulture = culture;
         Current.PropertyChanged?.Invoke(Current, new PropertyChangedEventArgs(Binding.IndexerName));
         Current.PropertyChanged?.Invoke(Current, new PropertyChangedEventArgs(nameof(LanguageSetting)));
+        Current.PropertyChanged?.Invoke(Current, new PropertyChangedEventArgs(nameof(FlowDirection)));
         LanguageChanged?.Invoke(Current, EventArgs.Empty);
     }
 
@@ -106,6 +118,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
             return AppLanguages.English;
         if (culture.TwoLetterISOLanguageName.Equals("es", StringComparison.OrdinalIgnoreCase))
             return AppLanguages.Spanish;
+        if (culture.TwoLetterISOLanguageName.Equals("ar", StringComparison.OrdinalIgnoreCase))
+            return AppLanguages.Arabic;
+        if (culture.TwoLetterISOLanguageName.Equals("hi", StringComparison.OrdinalIgnoreCase))
+            return AppLanguages.Hindi;
         return AppLanguages.Japanese;
     }
 }

@@ -40,6 +40,8 @@ internal static partial class LocalizationStrings
         ("Language.SimplifiedChinese", "Simpligita ĉina"),
         ("Language.TraditionalChinese", "Tradicia ĉina"),
         ("Language.Spanish", "Hispana"),
+        ("Language.Arabic", "Araba"),
+        ("Language.Hindi", "Hindia"),
         ("Language.Esperanto", "Esperanto (eksperimenta)"),
         ("Common.Apply", "Apliki"),
         ("Common.Edit", "Redakti"),
@@ -55,6 +57,7 @@ internal static partial class LocalizationStrings
         ("Common.NoChange", "Ne ŝanĝi"),
         ("Common.Unknown", "Nekonata"),
         ("Main.Menu.Mode", "Reĝimo"),
+        ("Main.Menu.RestorePreModeState", "Restarigi la staton antaŭ apliko de la reĝimo"),
         ("Main.Menu.New", "Nova..."),
         ("Main.Menu.Import", "Importi reĝimajn agordojn..."),
         ("Main.Menu.Export", "Eksporti reĝimajn agordojn..."),
@@ -88,7 +91,7 @@ internal static partial class LocalizationStrings
         ("Settings.Title", "Agordoj de la aplikaĵo"),
         ("Settings.Description", "Agordu la lingvon, videblajn reĝimojn, startigon, fermbutonon kaj fulmoklavojn."),
         ("Settings.Language", "Montra lingvo"),
-        ("Settings.LanguageDescription", "Defaŭlte estas uzata la montra lingvo de Windows. Vi ankaŭ povas elekti la japanan, anglan, simpligitan aŭ tradician ĉinan, hispanan aŭ eksperimentan Esperanton."),
+        ("Settings.LanguageDescription", "Defaŭlte estas uzata la montra lingvo de Windows. Vi ankaŭ povas elekti la japanan, anglan, simpligitan aŭ tradician ĉinan, hispanan, araban, hindian aŭ eksperimentan Esperanton."),
         ("Settings.Updates", "Ĝisdatigoj"),
         ("Settings.CheckForUpdatesAutomatically", "Aŭtomate kontroli novajn versiojn"),
         ("Settings.UpdateDescription", "Kontrolas 30 sekundojn post startigo kaj poste ĉiujn 24 horojn. Sciigas nur kiam nova versio disponeblas."),
@@ -231,6 +234,8 @@ internal static partial class LocalizationStrings
         ("Language.SimplifiedChinese", "Chino simplificado"),
         ("Language.TraditionalChinese", "Chino tradicional"),
         ("Language.Spanish", "Español"),
+        ("Language.Arabic", "Árabe"),
+        ("Language.Hindi", "Hindi"),
         ("Language.Esperanto", "Esperanto (experimental)"),
         ("Common.Apply", "Aplicar"),
         ("Common.Edit", "Editar"),
@@ -246,6 +251,7 @@ internal static partial class LocalizationStrings
         ("Common.NoChange", "No cambiar"),
         ("Common.Unknown", "Desconocido"),
         ("Main.Menu.Mode", "Modo"),
+        ("Main.Menu.RestorePreModeState", "Restaurar el estado previo a aplicar el modo"),
         ("Main.Menu.New", "Nuevo..."),
         ("Main.Menu.Import", "Importar configuración de modos..."),
         ("Main.Menu.Export", "Exportar configuración de modos..."),
@@ -279,7 +285,7 @@ internal static partial class LocalizationStrings
         ("Settings.Title", "Configuración de la aplicación"),
         ("Settings.Description", "Configura el idioma, los modos visibles, el inicio, el botón de cierre y los atajos."),
         ("Settings.Language", "Idioma"),
-        ("Settings.LanguageDescription", "De forma predeterminada se usa el idioma de Windows. También puedes elegir japonés, inglés, chino simplificado, chino tradicional, español o esperanto experimental."),
+        ("Settings.LanguageDescription", "De forma predeterminada se usa el idioma de Windows. También puedes elegir japonés, inglés, chino simplificado, chino tradicional, español, árabe, hindi o esperanto experimental."),
         ("Settings.Updates", "Actualizaciones"),
         ("Settings.CheckForUpdatesAutomatically", "Buscar nuevas versiones automáticamente"),
         ("Settings.UpdateDescription", "Busca actualizaciones 30 segundos después del inicio y cada 24 horas. Solo avisa cuando hay una nueva versión."),
@@ -579,9 +585,11 @@ internal static partial class LocalizationStrings
         values["Language.SimplifiedChinese"] = "简体中文";
         values["Language.TraditionalChinese"] = "繁体中文";
         values["Language.Spanish"] = "西班牙语";
+        values["Language.Arabic"] = "阿拉伯语";
+        values["Language.Hindi"] = "印地语";
         values["Language.Esperanto"] = "世界语（实验性）";
         values["Settings.LanguageDescription"] =
-            "默认使用 Windows 显示语言。也可以固定为日语、英语、简体中文、繁体中文、西班牙语或实验性的世界语。";
+            "默认使用 Windows 显示语言。也可以固定为日语、英语、简体中文、繁体中文、西班牙语、阿拉伯语、印地语或实验性的世界语。";
     }
 
     private static string ToSimplifiedChinese(string value)

@@ -122,7 +122,7 @@ internal static partial class LocalizationStrings
             values["Message." + message.Ja] =
                 language switch
                 {
-                    1 or 4 or 5 => message.En,
+                    1 or 4 or 5 or 6 or 7 => message.En,
                     2 or 3 => message.Zh,
                     _ => message.Ja
                 };

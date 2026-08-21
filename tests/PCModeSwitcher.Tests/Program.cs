@@ -47,7 +47,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ,("5モード表示順の並べ替え保存", TestVisibleModeReorderAsync)
     ,("追加モードへ午〜亥アイコンを順番に割り当て", TestAdditionalCustomIconsAsync)
     ,("トランザクション適用と逆順復元", TestTransactionalModeEngineAsync)
-    ,("元に戻す案内は30秒後に控えめ表示", TestRestoreEmphasisTimingAsync)
+    ,("元に戻す案内は10秒強調・30秒表示", TestRestoreEmphasisTimingAsync)
     ,("起動時は適用済み記録を破棄し適用中断時だけ自動復旧", TestAutomaticRecoveryPolicyAsync)
     ,("破損JSONの退避", TestCorruptedSettingsQuarantineAsync)
     ,("動的モードのエクスポートとインポート", TestProfileExportImportAsync)
@@ -55,7 +55,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ,("未追跡の起動アプリを復元成功扱いにしない", TestUntrackedLaunchRestoreResultAsync)
     ,("入出力ダイアログはユーザー文書から開始", TestProfileDialogInitialDirectoryAsync)
     ,("元に戻すショートカットの重複検出", TestRestoreHotkeyConflictAsync),
-    ("6言語と既定言語の保存", TestLocalizationAsync)
+    ("8言語と既定言語の保存・アラビア語RTL", TestLocalizationAsync)
 };
 
 var failures = new List<string>();
@@ -1586,14 +1586,34 @@ static Task TestRestoreEmphasisTimingAsync()
 {
     var appliedUtc = new DateTimeOffset(2026, 8, 20, 0, 0, 0, TimeSpan.Zero);
     Assert(MainViewModel.GetRestoreEmphasisRemaining(
-               true, appliedUtc, appliedUtc.AddSeconds(29)) == TimeSpan.FromSeconds(1),
-        "適用後30秒未満で『元に戻しますか？』の強調が終わります。");
+               true, appliedUtc, appliedUtc.AddSeconds(9)) == TimeSpan.FromSeconds(1),
+        "適用後10秒未満で『元に戻しますか？』の強調が終わります。");
     Assert(MainViewModel.GetRestoreEmphasisRemaining(
+               true, appliedUtc, appliedUtc.AddSeconds(10)) == TimeSpan.Zero,
+        "適用後10秒を過ぎても『元に戻しますか？』が強調されたままです。");
+    Assert(MainViewModel.GetRestorePromptRemaining(
+               true, appliedUtc, appliedUtc.AddSeconds(29)) == TimeSpan.FromSeconds(1),
+        "適用後30秒未満で『元に戻しますか？』が非表示になります。");
+    Assert(MainViewModel.GetRestorePromptRemaining(
                true, appliedUtc, appliedUtc.AddSeconds(30)) == TimeSpan.Zero,
-        "適用後30秒を過ぎても『元に戻しますか？』が強調されたままです。");
+        "適用後30秒を過ぎても『元に戻しますか？』が画面に残ります。");
     Assert(MainViewModel.GetRestoreEmphasisRemaining(
                false, appliedUtc, appliedUtc.AddSeconds(1)) == TimeSpan.Zero,
         "復元対象がない状態で『元に戻す』が強調されます。");
+    Assert(MainViewModel.GetRestorePromptRemaining(
+               false, appliedUtc, appliedUtc.AddSeconds(1)) == TimeSpan.Zero,
+        "復元対象がない状態で『元に戻しますか？』が表示されます。");
+
+    var xaml = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory, "TestAssets", "MainWindow.xaml"));
+    Assert(xaml.Contains(
+               "Visibility=\"{Binding IsRestorePromptVisible, Converter={StaticResource BoolToVisibility}}\"",
+               StringComparison.Ordinal),
+        "画面上部の復元案内が30秒表示用の状態へ連動していません。");
+    Assert(xaml.Contains(
+               "Header=\"{loc:Loc Main.Menu.RestorePreModeState}\" Command=\"{Binding RestoreModeCommand}\"",
+               StringComparison.Ordinal),
+        "30秒後も利用できる『モード適用前の状態に戻す』項目がモードメニューにありません。");
     return Task.CompletedTask;
 }
 
@@ -1708,9 +1728,16 @@ static async Task TestLocalizationAsync()
         Assert(loaded.IsSuccess && loaded.Value?.Language == AppLanguages.TraditionalChinese,
             "表示言語が再読み込み後に保持されていません。");
 
+        LocalizationService.SetLanguage(AppLanguages.Japanese);
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") == "モード適用前の状態に戻す",
+            "日本語の復元メニューが意図した表記ではありません。");
+
         LocalizationService.SetLanguage(AppLanguages.English);
         Assert(LocalizationService.Get("Settings.Title") == "App settings",
             "英語UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") ==
+               "Restore state from before applying the mode",
+            "英語の復元メニューを読み込めませんでした。");
         Assert(LocalizationService.Get("Update.CheckMenu") == "Check for updates...",
             "英語の更新確認UIを読み込めませんでした。");
         Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
@@ -1724,6 +1751,8 @@ static async Task TestLocalizationAsync()
         LocalizationService.SetLanguage(AppLanguages.TraditionalChinese);
         Assert(LocalizationService.Get("Settings.Title") == "應用程式設定",
             "繁体字UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") == "返回模式生效前的狀態",
+            "繁体字の復元メニューを読み込めませんでした。");
         Assert(LocalizationService.Get("Update.Available").Contains("新版本", StringComparison.Ordinal),
             "繁体字の更新通知UIを読み込めませんでした。");
         Assert(card.DisplaySummary.StartsWith("插入電源", StringComparison.Ordinal),
@@ -1732,6 +1761,8 @@ static async Task TestLocalizationAsync()
         LocalizationService.SetLanguage(AppLanguages.SimplifiedChinese);
         Assert(LocalizationService.Get("Settings.Title") == "应用程序设置",
             "简体字UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") == "返回模式生效前的状态",
+            "簡体字の復元メニューを読み込めませんでした。");
         Assert(LocalizationService.Get("Settings.CheckForUpdatesAutomatically").Contains(
                 "自动检查",
                 StringComparison.Ordinal),
@@ -1743,6 +1774,9 @@ static async Task TestLocalizationAsync()
         LocalizationService.SetLanguage(AppLanguages.Spanish);
         Assert(LocalizationService.Get("Settings.Title") == "Configuración de la aplicación",
             "スペイン語UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") ==
+               "Restaurar el estado previo a aplicar el modo",
+            "スペイン語の復元メニューを読み込めませんでした。");
         Assert(LocalizationService.Get("Update.CheckMenu") == "Buscar actualizaciones...",
             "スペイン語の更新確認UIを読み込めませんでした。");
         Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
@@ -1754,6 +1788,9 @@ static async Task TestLocalizationAsync()
         LocalizationService.SetLanguage(AppLanguages.Esperanto);
         Assert(LocalizationService.Get("Settings.Title") == "Agordoj de la aplikaĵo",
             "エスペラントUIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") ==
+               "Restarigi la staton antaŭ apliko de la reĝimo",
+            "エスペラントの復元メニューを読み込めませんでした。");
         Assert(LocalizationService.Get("Language.Esperanto") == "Esperanto (eksperimenta)",
             "エスペラントの実験的表示がありません。");
         Assert(LocalizationService.Get("Update.CheckMenu") == "Kontroli ĝisdatigojn...",
@@ -1763,6 +1800,38 @@ static async Task TestLocalizationAsync()
             "エスペラントの結果メッセージへ切り替わりませんでした。");
         Assert(card.DisplaySummary.StartsWith("Konektita", StringComparison.Ordinal),
             "エスペラントのカード要約へ切り替わりませんでした。");
+
+        LocalizationService.SetLanguage(AppLanguages.Arabic);
+        Assert(LocalizationService.Get("Settings.Title") == "إعدادات التطبيق",
+            "アラビア語UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") ==
+               "استعادة الحالة التي كانت قبل تطبيق الوضع",
+            "アラビア語の復元メニューを読み込めませんでした。");
+        Assert(LocalizationService.Get("Update.CheckMenu") == "التحقق من وجود تحديثات...",
+            "アラビア語の更新確認UIを読み込めませんでした。");
+        Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
+               "تعذر حفظ إعدادات الوضع.",
+            "アラビア語の結果メッセージへ切り替わりませんでした。");
+        Assert(card.DisplaySummary.StartsWith("موصل", StringComparison.Ordinal),
+            "アラビア語のカード要約へ切り替わりませんでした。");
+        Assert(LocalizationService.Current.FlowDirection == System.Windows.FlowDirection.RightToLeft,
+            "アラビア語UIが右から左の表示になっていません。");
+
+        LocalizationService.SetLanguage(AppLanguages.Hindi);
+        Assert(LocalizationService.Get("Settings.Title") == "ऐप सेटिंग",
+            "ヒンディー語UIを読み込めませんでした。");
+        Assert(LocalizationService.Get("Main.Menu.RestorePreModeState") ==
+               "मोड लागू करने से पहले की स्थिति पुनर्स्थापित करें",
+            "ヒンディー語の復元メニューを読み込めませんでした。");
+        Assert(LocalizationService.Get("Update.CheckMenu") == "अपडेट जाँचें...",
+            "ヒンディー語の更新確認UIを読み込めませんでした。");
+        Assert(OperationResult.Failure("モード設定を保存できませんでした。").UserMessage ==
+               "मोड सेटिंग सहेजी नहीं जा सकी।",
+            "ヒンディー語の結果メッセージへ切り替わりませんでした。");
+        Assert(card.DisplaySummary.StartsWith("प्लग इन", StringComparison.Ordinal),
+            "ヒンディー語のカード要約へ切り替わりませんでした。");
+        Assert(LocalizationService.Current.FlowDirection == System.Windows.FlowDirection.LeftToRight,
+            "ヒンディー語UIが左から右の表示になっていません。");
         Assert(LocalizationService.ResolveSystemLanguage(CultureInfo.GetCultureInfo("zh-CN")) ==
                AppLanguages.SimplifiedChinese,
             "中国本土の表示言語を簡体字として判定できませんでした。");
@@ -1772,6 +1841,12 @@ static async Task TestLocalizationAsync()
         Assert(LocalizationService.ResolveSystemLanguage(CultureInfo.GetCultureInfo("es-MX")) ==
                AppLanguages.Spanish,
             "スペイン語圏の表示言語をスペイン語として判定できませんでした。");
+        Assert(LocalizationService.ResolveSystemLanguage(CultureInfo.GetCultureInfo("ar-EG")) ==
+               AppLanguages.Arabic,
+            "アラビア語圏の表示言語をアラビア語として判定できませんでした。");
+        Assert(LocalizationService.ResolveSystemLanguage(CultureInfo.GetCultureInfo("hi-IN")) ==
+               AppLanguages.Hindi,
+            "ヒンディー語の表示言語をヒンディー語として判定できませんでした。");
         Assert(LocalizationService.Normalize("invalid") == AppLanguages.System,
             "不正な表示言語が既定値へ戻りませんでした。");
     }

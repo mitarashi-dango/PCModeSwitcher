@@ -16,6 +16,8 @@
 
     <Menu Background="White" Padding="8,2">
       <MenuItem Header="{loc:Loc Main.Menu.Mode}">
+        <MenuItem Header="{loc:Loc Main.Menu.RestorePreModeState}" Command="{Binding RestoreModeCommand}"/>
+        <Separator/>
         <MenuItem Header="{loc:Loc Main.Menu.New}" Click="NewMode_Click"/>
         <Separator/>
         <MenuItem Header="{loc:Loc Main.Menu.Import}" Click="ImportModes_Click"/>
@@ -48,7 +50,7 @@
         <StackPanel Grid.Column="1" Orientation="Horizontal">
           <Button Content="{loc:Loc Main.RestorePrompt}"
                   Command="{Binding RestoreModeCommand}"
-                  Visibility="{Binding HasActiveSession, Converter={StaticResource BoolToVisibility}}"
+                  Visibility="{Binding IsRestorePromptVisible, Converter={StaticResource BoolToVisibility}}"
                   MinWidth="112" Margin="0,0,12,0" Padding="18,8">
             <Button.Style>
               <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
